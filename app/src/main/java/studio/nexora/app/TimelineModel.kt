@@ -64,6 +64,49 @@ data class TimelineDocument(
         }
     )
 
+    fun snapPosition(
+        trackId: String,
+        clipId: String,
+        proposedStartMs: Long,
+        thresholdMs: Long = 250L
+    ): Long {
+        val track = tracks.firstOrNull { it.id == trackId } ?: return proposedStartMs.coerceAtLeast(0L)
+        val clip = track.clips.firstOrNull { it.id == clipId } ?: return proposedStartMs.coerceAtLeast(0L)
+        val proposed = proposedStartMs.coerceAtLeast(0L)
+        val candidates = track.clips.asSequence()
+            .filterNot { it.id == clipId }
+            .flatMap { other -> sequenceOf(other.startMs, (other.endMs - clip.durationMs).coerceAtLeast(0L), other.endMs) }
+            .plus(sequenceOf(0L))
+        return candidates
+            .map { candidate -> candidate to kotlin.math.abs(candidate - proposed) }
+            .filter { (_, distance) -> distance <= thresholdMs.coerceAtLeast(0L) }
+            .minByOrNull { it.second }
+            ?.first ?: proposed
+    }
+
+    fun moveClipMagnetic(
+        trackId: String,
+        clipId: String,
+        proposedStartMs: Long,
+        thresholdMs: Long = 250L
+    ): TimelineDocument = moveClip(trackId, clipId, snapPosition(trackId, clipId, proposedStartMs, thresholdMs))
+
+    fun rippleRemoveClip(trackId: String, clipId: String): TimelineDocument {
+        val track = tracks.firstOrNull { it.id == trackId && !it.locked } ?: return this
+        val removed = track.clips.firstOrNull { it.id == clipId } ?: return this
+        return copy(tracks = tracks.map { current ->
+            if (current.id != trackId) current else current.copy(
+                clips = current.clips
+                    .filterNot { it.id == clipId }
+                    .map { clip ->
+                        if (clip.startMs >= removed.endMs) clip.copy(startMs = clip.startMs - removed.durationMs)
+                        else clip
+                    }
+                    .sortedBy { it.startMs }
+            )
+        })
+    }
+
     fun removeClip(trackId: String, clipId: String): TimelineDocument = copy(
         tracks = tracks.map { track ->
             if (track.id == trackId && !track.locked) track.copy(clips = track.clips.filterNot { it.id == clipId })
