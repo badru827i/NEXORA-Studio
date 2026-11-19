@@ -64,6 +64,27 @@ data class TimelineDocument(
         }
     )
 
+    fun trimClipStart(trackId: String, clipId: String, proposedStartMs: Long): TimelineDocument = copy(
+        tracks = tracks.map { track ->
+            if (track.id != trackId || track.locked) track else track.copy(clips = track.clips.map { clip ->
+                if (clip.id != clipId) clip else {
+                    val earliestStart = (clip.startMs - clip.sourceInMs).coerceAtLeast(0L)
+                    val newStart = proposedStartMs.coerceIn(earliestStart, clip.endMs - 1L)
+                    val delta = newStart - clip.startMs
+                    clip.copy(startMs = newStart, durationMs = clip.endMs - newStart, sourceInMs = clip.sourceInMs + delta)
+                }
+            }.sortedBy { it.startMs })
+        }
+    )
+
+    fun trimClipEnd(trackId: String, clipId: String, proposedEndMs: Long): TimelineDocument = copy(
+        tracks = tracks.map { track ->
+            if (track.id != trackId || track.locked) track else track.copy(clips = track.clips.map { clip ->
+                if (clip.id != clipId) clip else clip.copy(durationMs = proposedEndMs.coerceIn(clip.startMs + 1L, clip.endMs) - clip.startMs)
+            }.sortedBy { it.startMs })
+        }
+    )
+
     fun snapPosition(
         trackId: String,
         clipId: String,
