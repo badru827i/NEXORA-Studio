@@ -27,6 +27,8 @@ class GpuBlockMatchingSession private constructor() : AutoCloseable {
     private var context: EGLContext = EGL14.EGL_NO_CONTEXT
     private var program = 0
     private val buffers = IntArray(3)
+    var successfulDispatches: Int = 0
+        private set
 
     init {
         initializeEgl()
@@ -101,6 +103,7 @@ class GpuBlockMatchingSession private constructor() : AutoCloseable {
         }
         GLES30.glUnmapBuffer(GLES31.GL_SHADER_STORAGE_BUFFER)
         if (bestIndex < 0 || !bestScore.isFinite()) return null
+        successfulDispatches++
         return GpuMatch(
             minX + (bestIndex % gridWidth) * step,
             minY + (bestIndex / gridWidth) * step,
