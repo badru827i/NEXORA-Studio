@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import org.junit.Test
@@ -17,6 +18,9 @@ class MainActivitySmokeTest {
             onView(withText("NEXORA STUDIO")).check(matches(isDisplayed()))
             onView(withText("Workspace")).check(matches(isDisplayed()))
             onView(withText("Timeline")).check(matches(isDisplayed()))
+            onView(withText("Tracking")).perform(click())
+            onView(withText("Motion Tracker")).check(matches(isDisplayed()))
+            onView(withText("Track video automatically")).check(matches(isDisplayed()))
         }
     }
 }
