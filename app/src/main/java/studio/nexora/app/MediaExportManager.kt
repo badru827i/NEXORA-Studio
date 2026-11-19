@@ -22,7 +22,7 @@ import androidx.media3.transformer.Transformer
 import java.io.File
 import java.io.FileInputStream
 
-@UnstableApi
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 class MediaExportManager(private val context: Context) {
     interface Callback {
         fun onComplete(outputFile: File, publicUri: Uri?)
