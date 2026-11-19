@@ -46,8 +46,9 @@ data class MotionTrackingResult(
 )
 
 /**
- * Lightweight CPU template tracker. It uses normalized cross-correlation over a selected
- * image patch and a coarse-to-fine local search. It has no native/OpenCV dependency.
+ * Adaptive local template tracker. GLES 3.1 compute performs coarse candidate matching when
+ * available; normalized cross-correlation on CPU refines the match and remains the fallback.
+ * No OpenCV, native binaries, cloud calls or extra runtime dependencies are required.
  */
 object MotionTrackingEngine {
     private data class Template(
