@@ -684,5 +684,4 @@ private fun ThreeDPage(modifier: Modifier) {
 }
 
 private fun safeCropZoom(value: Float): Float = if (value.isFinite()) value.coerceIn(1f, 2.5f) else 1f
-private fun safeRotationDegrees(value: Int): Int = if (value in listOf(0, 90, 180, 270)) value else 0
 private fun safeOutputPreset(value: String): String = if (value in listOf("Original", "480p", "720p", "1080p")) value else "Original"
