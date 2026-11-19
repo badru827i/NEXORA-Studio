@@ -42,7 +42,8 @@ object DeviceCapabilityDetector {
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val memory = ActivityManager.MemoryInfo().also(activityManager::getMemoryInfo)
         val stat = StatFs(context.cacheDir.absolutePath)
-        val hardware = listOf(Build.HARDWARE, Build.BOARD, Build.SOC_MODEL)
+        val socModel = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else ""
+        val hardware = listOf(Build.HARDWARE, Build.BOARD, socModel)
             .filter { it.isNotBlank() && !it.equals("unknown", true) }
             .distinct()
         val socName = hardware.firstOrNull() ?: "Not reported by firmware"
