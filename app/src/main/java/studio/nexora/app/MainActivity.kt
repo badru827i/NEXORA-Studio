@@ -177,6 +177,11 @@ private fun EditorScreen(
     speed: Float, changeSpeed: (Float) -> Unit, trimIn: Float, changeIn: (Float) -> Unit,
     trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit
 ) {
+    var trackingMode by remember { mutableStateOf("Object") }
+    var targetLocked by remember { mutableStateOf(false) }
+    var trackingKeyframes by remember { mutableIntStateOf(0) }
+    var trackingMessage by remember { mutableStateOf("Choose a tracking mode and lock a target.") }
+
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -231,9 +236,10 @@ private fun EditorScreen(
                 "Trim" to Icons.Default.ContentCut, "Split" to Icons.AutoMirrored.Filled.CallSplit,
                 "Crop" to Icons.Default.Crop, "Speed" to Icons.Default.Speed,
                 "Audio" to Icons.Default.GraphicEq, "Text" to Icons.Default.TextFields,
-                "Subtitles" to Icons.Default.Subtitles, "Adjust" to Icons.Default.Tune
+                "Subtitles" to Icons.Default.Subtitles, "Adjust" to Icons.Default.Tune,
+                "Tracking" to Icons.Default.GpsFixed
             )
-            LazyVerticalGrid(GridCells.Fixed(4), Modifier.fillMaxWidth().height(174.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), userScrollEnabled = false) {
+            LazyVerticalGrid(GridCells.Fixed(4), Modifier.fillMaxWidth().height(220.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), userScrollEnabled = false) {
                 items(tools.size) { i -> ToolTile(tools[i].first, tools[i].second, tools[i].first == tool) { selectTool(tools[i].first) } }
             }
         }
@@ -255,6 +261,39 @@ private fun EditorScreen(
                         "Split" -> {
                             Text("Place a split marker at the playhead.", color = Grey, fontSize = 12.sp)
                             OutlinedButton(onClick = split) { Icon(Icons.AutoMirrored.Filled.CallSplit, null); Text("Add split marker") }
+                        }
+                        "Tracking" -> {
+                            Text("Motion Tracker", fontWeight = FontWeight.SemiBold, color = Green)
+                            Text("Select a target type, lock the subject, then add tracking keyframes along the clip.", color = Grey, fontSize = 12.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("Object", "Point", "Face", "Camera").forEach { mode ->
+                                    FilterChip(selected = trackingMode == mode, onClick = {
+                                        trackingMode = mode
+                                        targetLocked = false
+                                        trackingMessage = mode + " mode selected. Lock a target to begin."
+                                    }, label = { Text(mode, fontSize = 11.sp) })
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Default.GpsFixed, null, tint = if (targetLocked) Green else Grey)
+                                Column(Modifier.weight(1f)) {
+                                    Text(if (targetLocked) "Target locked" else "No target locked", fontWeight = FontWeight.Medium)
+                                    Text(trackingMessage, color = Grey, fontSize = 11.sp)
+                                }
+                                OutlinedButton(onClick = {
+                                    targetLocked = !targetLocked
+                                    trackingMessage = if (targetLocked) trackingMode + " target ready. Add keyframes as you move through the clip." else "Target unlocked."
+                                }) { Text(if (targetLocked) "Unlock" else "Lock target") }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Keyframes: $trackingKeyframes", color = Grey, fontSize = 12.sp)
+                                Button(enabled = targetLocked, onClick = {
+                                    trackingKeyframes++
+                                    trackingMessage = "Keyframe $trackingKeyframes added. Automatic frame analysis is the next tracking-engine milestone."
+                                }) { Icon(Icons.Default.Add, null); Text("Add keyframe") }
+                            }
+                            LinearProgressIndicator(progress = { if (trackingKeyframes == 0) 0f else (trackingKeyframes.coerceAtMost(10) / 10f) }, modifier = Modifier.fillMaxWidth())
+                            Text("Current stage: manual target/keyframe authoring. Automatic object detection and frame-to-frame tracking are not enabled yet.", color = Grey, fontSize = 11.sp)
                         }
                         else -> Text(when(tool) {
                             "Crop" -> "Crop, resize and rotation controls will be added to the transform panel."
