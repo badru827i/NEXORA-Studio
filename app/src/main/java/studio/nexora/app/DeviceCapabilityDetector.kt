@@ -43,7 +43,7 @@ object DeviceCapabilityDetector {
         val memory = ActivityManager.MemoryInfo().also(activityManager::getMemoryInfo)
         val stat = StatFs(context.cacheDir.absolutePath)
         val socModel = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else ""
-        val hardware = listOf(Build.HARDWARE, Build.BOARD, socModel)
+        val hardware = listOf(socModel, Build.HARDWARE, Build.BOARD)
             .filter { it.isNotBlank() && !it.equals("unknown", true) }
             .distinct()
         val socName = hardware.firstOrNull() ?: "Not reported by firmware"
@@ -90,7 +90,7 @@ object DeviceCapabilityDetector {
         val s = value.lowercase()
         return when {
             "qcom" in s || "qualcomm" in s || "snapdragon" in s -> "Qualcomm"
-            "mt" in s || "mediatek" in s || "dimensity" in s -> "MediaTek"
+            Regex("\\bmt[0-9]+").containsMatchIn(s) || "mediatek" in s || "dimensity" in s -> "MediaTek"
             "exynos" in s || "samsung" in s -> "Samsung"
             "tensor" in s || "google" in s -> "Google"
             "kirin" in s || "hisilicon" in s -> "HiSilicon"
