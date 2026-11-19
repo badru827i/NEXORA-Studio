@@ -13,6 +13,8 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.SpeedProvider
+import androidx.media3.common.audio.GainProcessor
+import androidx.media3.common.audio.DefaultGainProvider
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -40,6 +42,9 @@ class MediaExportManager(private val context: Context) {
         cropZoom: Float,
         rotationDegrees: Int,
         outputPreset: String,
+        audioGain: Float = 1f,
+        fadeInMs: Long = 0L,
+        fadeOutMs: Long = 0L,
         callback: Callback
     ) {
         Thread {
@@ -82,9 +87,30 @@ class MediaExportManager(private val context: Context) {
                         override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
                     }
 
+                    val safeSpeed = playbackSpeed.coerceIn(0.25f, 3f)
+                    val outputDurationUs = (((endMs - startMs).toDouble() / safeSpeed) * 1_000.0).toLong()
+                    val safeFadeInUs = (fadeInMs.coerceAtLeast(0L) * 1_000L).coerceAtMost(outputDurationUs)
+                    val safeFadeOutUs = (fadeOutMs.coerceAtLeast(0L) * 1_000L).coerceAtMost(outputDurationUs)
+                    val gain = audioGain.coerceIn(0f, 1f)
+                    val audioProcessors = if (gain < 0.999f || safeFadeInUs > 0L || safeFadeOutUs > 0L) {
+                        val provider = DefaultGainProvider.Builder(gain).apply {
+                            if (safeFadeInUs > 0L) {
+                                addFadeAt(0L, safeFadeInUs, DefaultGainProvider.FADE_IN_LINEAR)
+                            }
+                            if (safeFadeOutUs > 0L) {
+                                addFadeAt(
+                                    (outputDurationUs - safeFadeOutUs).coerceAtLeast(0L),
+                                    safeFadeOutUs,
+                                    DefaultGainProvider.FADE_OUT_LINEAR
+                                )
+                            }
+                        }.build()
+                        listOf(GainProcessor(provider))
+                    } else emptyList()
+
                     val editedItem = EditedMediaItem.Builder(clippedMedia)
                         .setSpeed(speedProvider)
-                        .setEffects(Effects(emptyList(), buildVideoEffects(cropZoom, rotationDegrees, outputPreset, inputShortSide)))
+                        .setEffects(Effects(audioProcessors, buildVideoEffects(cropZoom, rotationDegrees, outputPreset, inputShortSide)))
                         .setFrameRate(30)
                         .build()
 
