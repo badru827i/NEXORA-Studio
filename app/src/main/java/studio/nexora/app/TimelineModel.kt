@@ -75,7 +75,7 @@ data class TimelineDocument(
         val proposed = proposedStartMs.coerceAtLeast(0L)
         val candidates = track.clips.asSequence()
             .filterNot { it.id == clipId }
-            .flatMap { other -> sequenceOf(other.startMs, (other.endMs - clip.durationMs).coerceAtLeast(0L), other.endMs) }
+            .flatMap { other -> sequenceOf((other.startMs - clip.durationMs).coerceAtLeast(0L), other.endMs) }
             .plus(sequenceOf(0L))
         return candidates
             .map { candidate -> candidate to kotlin.math.abs(candidate - proposed) }
