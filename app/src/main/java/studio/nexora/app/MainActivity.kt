@@ -385,7 +385,7 @@ private fun EditorScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.TrackChanges, null)
+                                Icon(Icons.Default.GpsFixed, null)
                                 Spacer(Modifier.width(8.dp))
                                 Text(if (trackingRunning) "Tracking..." else "Track video automatically")
                             }
