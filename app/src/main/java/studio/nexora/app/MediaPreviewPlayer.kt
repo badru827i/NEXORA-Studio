@@ -10,13 +10,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
-fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier) {
+fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, videoEffects: List<Effect> = emptyList()) {
     val context = LocalContext.current
     val player = remember { ExoPlayer.Builder(context).build() }
 
@@ -32,6 +33,10 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier) {
 
     LaunchedEffect(speed) {
         player.setPlaybackSpeed(speed.coerceIn(0.25f, 3f))
+    }
+
+    LaunchedEffect(videoEffects) {
+        player.setVideoEffects(videoEffects)
     }
 
     AndroidView(
