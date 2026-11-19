@@ -64,16 +64,19 @@ jobs:
           {
             echo "## NEXORA Studio QA Bot"
             echo ""
-            echo "- Commit: \`\${GITHUB_SHA::12}\`"
-            echo "- Workflow result: **\${{ job.status }}**"
-            if [ -n "\${APK_SIZE:-}" ]; then
+            echo "- Commit: \`${GITHUB_SHA::12}\`"
+            echo "- Workflow result: **${{ job.status }}**"
+            if [ -n "${APK_SIZE:-}" ]; then
               echo "- APK size: **$APK_SIZE**"
               echo "- SHA-256: \`$APK_SHA256\`"
               echo "- APK archive integrity: **PASS**"
-            echo "- Android Emulator instrumentation test: **PASS**"
+              if [ "${{ steps.emulator_ui.outcome }}" = "success" ]; then
+                echo "- Android Emulator instrumentation test: **PASS**"
+              else
+                echo "- Android Emulator instrumentation test: **NOT COMPLETED (host emulator issue)**"
+              fi
             else
               echo "- APK validation: **NOT COMPLETED**"
-              echo "- Emulator test: see job logs for result"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload debug APK
