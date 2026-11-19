@@ -1,0 +1,155 @@
+package studio.nexora.app
+
+import android.content.ContentValues
+import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.audio.SpeedProvider
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.ExportException
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.Transformer
+import java.io.File
+import java.io.FileInputStream
+
+@OptIn(UnstableApi::class)
+class MediaExportManager(private val context: Context) {
+    interface Callback {
+        fun onComplete(outputFile: File, publicUri: Uri?)
+        fun onError(message: String)
+    }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    fun export(
+        inputUri: Uri,
+        trimStartPercent: Float,
+        trimEndPercent: Float,
+        playbackSpeed: Float,
+        callback: Callback
+    ) {
+        Thread {
+            val durationMs = readDuration(inputUri)
+            if (durationMs <= 0L) {
+                mainHandler.post { callback.onError("Could not read the video duration.") }
+                return@Thread
+            }
+
+            val safeStart = trimStartPercent.coerceIn(0f, 99f)
+            val safeEnd = trimEndPercent.coerceIn(safeStart + 1f, 100f)
+            val startMs = (durationMs * safeStart / 100f).toLong().coerceIn(0L, durationMs - 1L)
+            val endMs = (durationMs * safeEnd / 100f).toLong().coerceIn(startMs + 1L, durationMs)
+
+            val outputDirectory = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+                ?: File(context.filesDir, "Movies")
+            if (!outputDirectory.exists() && !outputDirectory.mkdirs()) {
+                mainHandler.post { callback.onError("Cannot create the export folder.") }
+                return@Thread
+            }
+            val outputFile = File(outputDirectory, "NEXORA_" + System.currentTimeMillis() + ".mp4")
+
+            mainHandler.post {
+                try {
+                    val clippedMedia = MediaItem.Builder()
+                        .setUri(inputUri)
+                        .setClippingConfiguration(
+                            MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(startMs)
+                                .setEndPositionMs(endMs)
+                                .build()
+                        )
+                        .build()
+
+                    val speedProvider = object : SpeedProvider {
+                        override fun getSpeed(presentationTimeUs: Long): Float =
+                            playbackSpeed.coerceIn(0.25f, 3f)
+
+                        override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
+                    }
+
+                    val editedItem = EditedMediaItem.Builder(clippedMedia)
+                        .setSpeed(speedProvider)
+                        .setFrameRate(30)
+                        .build()
+
+                    val listener = object : Transformer.Listener {
+                        override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                            Thread {
+                                val galleryUri = runCatching { copyToGallery(outputFile) }.getOrNull()
+                                mainHandler.post { callback.onComplete(outputFile, galleryUri) }
+                            }.start()
+                        }
+
+                        override fun onError(
+                            composition: Composition,
+                            exportResult: ExportResult,
+                            exportException: ExportException
+                        ) {
+                            outputFile.delete()
+                            callback.onError(exportException.message ?: "Video export failed.")
+                        }
+                    }
+
+                    Transformer.Builder(context)
+                        .setVideoMimeType(MimeTypes.VIDEO_H264)
+                        .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                        .addListener(listener)
+                        .build()
+                        .start(editedItem, outputFile.absolutePath)
+                } catch (error: Exception) {
+                    outputFile.delete()
+                    callback.onError(error.message ?: "Could not start video export.")
+                }
+            }
+        }.start()
+    }
+
+    private fun readDuration(uri: Uri): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } catch (_: Exception) {
+            0L
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun copyToGallery(file: File): Uri? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/NEXORA Studio")
+            put(MediaStore.Video.Media.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val destination = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+            ?: throw IllegalStateException("Could not create the Movies library entry.")
+
+        try {
+            resolver.openOutputStream(destination, "w").use { output ->
+                requireNotNull(output) { "Could not open the Movies output stream." }
+                FileInputStream(file).use { input -> input.copyTo(output) }
+            }
+            val published = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
+            resolver.update(destination, published, null, null)
+            return destination
+        } catch (error: Exception) {
+            resolver.delete(destination, null, null)
+            throw error
+        }
+    }
+}
