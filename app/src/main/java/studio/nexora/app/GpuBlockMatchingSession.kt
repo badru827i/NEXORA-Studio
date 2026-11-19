@@ -93,7 +93,7 @@ class GpuBlockMatchingSession private constructor() : AutoCloseable {
 
         GLES31.glBindBuffer(GLES31.GL_SHADER_STORAGE_BUFFER, buffers[2])
         val mapped = GLES30.glMapBufferRange(
-            GLES31.GL_SHADER_STORAGE_BUFFER, 0L, count * 4L, GLES30.GL_MAP_READ_BIT
+            GLES31.GL_SHADER_STORAGE_BUFFER, 0, count * 4, GLES30.GL_MAP_READ_BIT
         ) as? ByteBuffer ?: return null
         mapped.order(ByteOrder.nativeOrder())
         var bestIndex = -1
