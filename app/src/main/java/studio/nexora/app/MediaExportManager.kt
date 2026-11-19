@@ -16,6 +16,7 @@ import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
@@ -36,10 +37,14 @@ class MediaExportManager(private val context: Context) {
         trimStartPercent: Float,
         trimEndPercent: Float,
         playbackSpeed: Float,
+        cropZoom: Float,
+        rotationDegrees: Int,
+        outputPreset: String,
         callback: Callback
     ) {
         Thread {
             val durationMs = readDuration(inputUri)
+            val inputShortSide = readShortSide(inputUri)
             if (durationMs <= 0L) {
                 mainHandler.post { callback.onError("Could not read the video duration.") }
                 return@Thread
@@ -79,6 +84,7 @@ class MediaExportManager(private val context: Context) {
 
                     val editedItem = EditedMediaItem.Builder(clippedMedia)
                         .setSpeed(speedProvider)
+                        .setEffects(Effects(emptyList(), buildVideoEffects(cropZoom, rotationDegrees, outputPreset, inputShortSide)))
                         .setFrameRate(30)
                         .build()
 
@@ -121,6 +127,20 @@ class MediaExportManager(private val context: Context) {
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
         } catch (_: Exception) {
             0L
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun readShortSide(uri: Uri): Int? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: return null
+            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: return null
+            minOf(width, height).takeIf { it > 0 }
+        } catch (_: Exception) {
+            null
         } finally {
             runCatching { retriever.release() }
         }
