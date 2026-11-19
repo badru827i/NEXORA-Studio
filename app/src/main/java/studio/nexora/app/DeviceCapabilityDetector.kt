@@ -48,8 +48,11 @@ object DeviceCapabilityDetector {
             .distinct()
         val socName = hardware.firstOrNull() ?: "Not reported by firmware"
         val socVendor = identifyVendor(
-            Build.MANUFACTURER + " " + Build.HARDWARE + " " + Build.BOARD + " " + Build.SOC_MODEL
+            Build.MANUFACTURER + " " + Build.HARDWARE + " " + Build.BOARD + " " + socModel
         )
+        val glVersion = activityManager.deviceConfigurationInfo.reqGlEsVersion
+        val gles = if (glVersion == 0) "Unknown" else
+            "${glVersion shr 16}.${glVersion and 0xffff}"
         val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val thermal = if (Build.VERSION.SDK_INT >= 29) {
             when (power.currentThermalStatus) {
@@ -73,9 +76,7 @@ object DeviceCapabilityDetector {
             cpuCores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1),
             totalRamMb = memory.totalMem / (1024L * 1024L),
             availableRamMb = memory.availMem / (1024L * 1024L),
-            glesVersion = pm.systemAvailableFeatures.firstOrNull {
-                it.name == PackageManager.FEATURE_OPENGLES_EXTENSION_PACK
-            }?.version?.toString() ?: "OpenGL ES (runtime query required)",
+            glesVersion = gles,
             vulkanAvailable = vulkan,
             vulkanLevel = vulkanLevel,
             neuralApiAvailable = Build.VERSION.SDK_INT >= 27 &&
