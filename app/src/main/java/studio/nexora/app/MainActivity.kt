@@ -156,6 +156,11 @@ private fun NexoraApp() {
                         }
                         screen = Screen.Editor
                     },
+                    onDelete = { id ->
+                        projectDb.delete(id)
+                        if (activeProjectId == id) activeProjectId = null
+                        savedProjects = projectDb.list()
+                    },
                     onNew = {
                         activeProjectId = null
                         project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
