@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
 private data class Asset(val uri: Uri, val name: String)
 private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices"), ThreeD("3D") }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun NexoraApp() {
     val context = LocalContext.current
