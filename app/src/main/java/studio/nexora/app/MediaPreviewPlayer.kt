@@ -38,7 +38,7 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier) {
         factory = { viewContext ->
             PlayerView(viewContext).apply {
                 useController = true
-                player = player
+                this.player = player
             }
         },
         update = { view -> view.player = player }
