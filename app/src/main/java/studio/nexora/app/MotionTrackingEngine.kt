@@ -141,7 +141,7 @@ object MotionTrackingEngine {
         }
         return MotionTrackingResult(
             points, frames.size, average, lostAt, message,
-            if (gpuSession != null) "GPU compute · OpenGL ES 3.1" else "CPU fallback"
+            if ((gpuSession?.successfulDispatches ?: 0) > 0) "GPU compute · OpenGL ES 3.1" else "CPU fallback"
         )
     }
 
