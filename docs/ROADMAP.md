@@ -10,6 +10,8 @@
 - [x] Lightweight local SQLite project save and reopen
 - [x] Device inventory for SoC vendor/model, CPU, RAM, Vulkan exposure and thermal state
 - [x] Cache usage report and temporary-cache cleanup
+- [x] GLES 3.1 GPU compute block matching with automatic CPU fallback
+- [x] Actual tracking backend reporting in the editor
 - [ ] Persistent autosave during editing
 - [ ] Frame-accurate editing and Media3 preview/export
 
