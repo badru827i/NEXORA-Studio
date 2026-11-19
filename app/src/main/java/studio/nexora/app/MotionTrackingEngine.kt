@@ -235,7 +235,7 @@ object MotionTrackingEngine {
                 template.pixels, template.width, template.height,
                 frame.luma, frame.width, frame.height, oldLeft, oldTop
             )
-        }.getOrNull()
+        }.onFailure { gpu?.disable() }.getOrNull()
         if (gpuMatch != null) {
             val refine = max(2, min(template.width, template.height) / 8)
             var best = Match(gpuMatch.x, gpuMatch.y, gpuMatch.confidence)
