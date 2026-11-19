@@ -238,6 +238,9 @@ private fun EditorScreen(
     outputPreset: String, changeOutputPreset: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset) {
+        buildVideoEffects(cropZoom, rotationDegrees, outputPreset)
+    }
     var trackingMode by remember { mutableStateOf("Object") }
     var targetLocked by remember { mutableStateOf(false) }
     var targetCenterX by remember { mutableFloatStateOf(0.5f) }
@@ -261,7 +264,7 @@ private fun EditorScreen(
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
                 if (previewUri != null) {
                     Box(Modifier.fillMaxSize()) {
-                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize(), videoEffects = buildVideoEffects(cropZoom, rotationDegrees, outputPreset))
+                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize(), videoEffects = activeVideoEffects)
                         if (tool == "Tracking") {
                             val regionSize = if (trackingMode == "Point") 0.10f else 0.18f
                             BoxWithConstraints(
