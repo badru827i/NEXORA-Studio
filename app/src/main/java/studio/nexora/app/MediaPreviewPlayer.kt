@@ -39,7 +39,7 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier) {
         factory = { viewContext ->
             (LayoutInflater.from(viewContext)
                 .inflate(R.layout.nexora_player_view, null, false) as PlayerView).apply {
-                player = player
+                this.player = player
             }
         },
         update = { view -> view.player = player }
