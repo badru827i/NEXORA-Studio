@@ -5,7 +5,7 @@ plugins {
 }
 android {
     namespace = "studio.nexora.app"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "studio.nexora.app"
         minSdk = 26
