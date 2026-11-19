@@ -49,6 +49,35 @@ class TimelineModelTest {
     }
 
     @Test
+    fun magneticMoveSnapsClipEdgeToNearbyClip() {
+        val first = TimelineClip(id = "a", assetUri = "a", label = "A", startMs = 0L, durationMs = 2_000L)
+        val second = TimelineClip(id = "b", assetUri = "b", label = "B", startMs = 3_000L, durationMs = 1_000L)
+        val document = TimelineDocument(
+            listOf(TimelineTrack(id = "video", name = "Video 1", type = TimelineTrackType.VIDEO, clips = listOf(first, second)))
+        )
+
+        val moved = document.moveClipMagnetic("video", "a", 850L, thresholdMs = 200L)
+        assertEquals(1_000L, moved.tracks.single().clips.first { it.id == "a" }.startMs)
+    }
+
+    @Test
+    fun rippleDeleteClosesGapWithoutChangingOtherClipDurations() {
+        val first = TimelineClip(id = "a", assetUri = "a", label = "A", startMs = 0L, durationMs = 2_000L)
+        val removed = TimelineClip(id = "b", assetUri = "b", label = "B", startMs = 2_000L, durationMs = 1_500L)
+        val last = TimelineClip(id = "c", assetUri = "c", label = "C", startMs = 5_000L, durationMs = 2_000L)
+        val document = TimelineDocument(
+            listOf(TimelineTrack(id = "video", name = "Video 1", type = TimelineTrackType.VIDEO, clips = listOf(first, removed, last)))
+        )
+
+        val result = document.rippleRemoveClip("video", "b")
+        val clips = result.tracks.single().clips
+        assertEquals(listOf("a", "c"), clips.map { it.id })
+        assertEquals(3_500L, clips.last().startMs)
+        assertEquals(2_000L, clips.last().durationMs)
+        assertEquals(5_500L, result.durationMs)
+    }
+
+    @Test
     fun addedTracksUseReadableNames() {
         val document = TimelineDocument().addTrack(TimelineTrackType.AUDIO).addTrack(TimelineTrackType.TEXT)
         assertEquals(listOf("Video 1", "Audio 1", "Audio 2", "Text 1"), document.tracks.map { it.name })
