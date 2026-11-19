@@ -17,7 +17,7 @@ import androidx.media3.ui.PlayerView
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
-fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, videoEffects: List<Effect> = emptyList()) {
+fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, videoEffects: List<Effect> = emptyList(), volume: Float = 1f) {
     val context = LocalContext.current
     val player = remember { ExoPlayer.Builder(context).build().apply { setVideoEffects(videoEffects) } }
 
@@ -33,6 +33,10 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, vi
 
     LaunchedEffect(speed) {
         player.setPlaybackSpeed(speed.coerceIn(0.25f, 3f))
+    }
+
+    LaunchedEffect(volume) {
+        player.volume = volume.coerceIn(0f, 1f)
     }
 
     LaunchedEffect(videoEffects) {
