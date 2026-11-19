@@ -58,6 +58,10 @@ private fun NexoraApp() {
     var trimOut by remember { mutableFloatStateOf(100f) }
     var splitCount by remember { mutableIntStateOf(0) }
     var exportDialog by remember { mutableStateOf(false) }
+    var exportRunning by remember { mutableStateOf(false) }
+    var exportMessage by remember { mutableStateOf("Choose a video and start export.") }
+    val exporter = remember { MediaExportManager(context) }
+    val videoAsset = assets.firstOrNull { context.contentResolver.getType(it.uri)?.startsWith("video/") == true }
     var renameDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf(project) }
 
@@ -100,7 +104,7 @@ private fun NexoraApp() {
         ) { padding ->
             when(screen) {
                 Screen.Editor -> EditorScreen(
-                    Modifier.padding(padding), assets, tool, { tool = it }, speed, { speed = safeSpeed(it) },
+                    Modifier.padding(padding), assets, videoAsset?.uri, tool, { tool = it }, speed, { speed = safeSpeed(it) },
                     trimIn, { trimIn = safeTrimStart(it, trimOut) }, trimOut, { trimOut = safeTrimEnd(it, trimIn) },
                     splitCount, { splitCount++ }, { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
                 )
@@ -115,9 +119,43 @@ private fun NexoraApp() {
         }
     }
     if (exportDialog) AlertDialog(
-        onDismissRequest = { exportDialog = false }, title = { Text("Export project") },
-        text = { Text("The editing workspace is ready. Media3 preview and final video rendering are the next implementation step; this first foundation does not yet export a finished video.") },
-        confirmButton = { TextButton(onClick = { exportDialog = false }) { Text("Close") } }
+        onDismissRequest = { if (!exportRunning) exportDialog = false },
+        title = { Text("Export video") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (videoAsset == null) "Import a video first. Image and audio files cannot be exported with this single-clip video workflow." else "MP4 · H.264 video · AAC audio · 30 fps")
+                Text(exportMessage, color = Grey, fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = videoAsset != null && !exportRunning,
+                onClick = {
+                    val selected = videoAsset
+                    if (selected != null) {
+                        exportRunning = true
+                        exportMessage = "Preparing video..."
+                        exporter.export(selected.uri, trimIn, trimOut, speed, object : MediaExportManager.Callback {
+                            override fun onComplete(outputFile: java.io.File, publicUri: Uri?) {
+                                exportRunning = false
+                                exportMessage = if (publicUri != null) {
+                                    "Saved to Movies / NEXORA Studio"
+                                } else {
+                                    "Export complete. App file: " + outputFile.absolutePath
+                                }
+                            }
+                            override fun onError(message: String) {
+                                exportRunning = false
+                                exportMessage = "Export failed: " + message
+                            }
+                        })
+                    }
+                }
+            ) { Text(if (exportRunning) "Exporting..." else "Start export") }
+        },
+        dismissButton = {
+            TextButton(enabled = !exportRunning, onClick = { exportDialog = false }) { Text("Close") }
+        }
     )
     if (renameDialog) AlertDialog(
         onDismissRequest = { renameDialog = false }, title = { Text("Project name") },
@@ -129,7 +167,7 @@ private fun NexoraApp() {
 
 @Composable
 private fun EditorScreen(
-    modifier: Modifier, assets: List<Asset>, tool: String, selectTool: (String) -> Unit,
+    modifier: Modifier, assets: List<Asset>, previewUri: Uri?, tool: String, selectTool: (String) -> Unit,
     speed: Float, changeSpeed: (Float) -> Unit, trimIn: Float, changeIn: (Float) -> Unit,
     trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit
 ) {
@@ -140,13 +178,16 @@ private fun EditorScreen(
                 Row { Icon(Icons.Default.Undo, null, tint = Grey); Spacer(Modifier.width(10.dp)); Icon(Icons.Default.Redo, null, tint = Grey) }
             }
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Movie, null, tint = Color(0xFFD7DED8), modifier = Modifier.size(34.dp))
-                        Text(if (assets.isEmpty()) "Your preview appears here" else assets.first().name, color = Paper, fontSize = 13.sp)
-                        Text(if (assets.isEmpty()) "Import media to start" else assets.size.toString() + " media item(s)", color = Color(0xFFBEC7BF), fontSize = 11.sp)
+                if (previewUri != null) {
+                    MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize())
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Movie, null, tint = Color(0xFFD7DED8), modifier = Modifier.size(34.dp))
+                            Text("Import a video to preview", color = Paper, fontSize = 13.sp)
+                            Text("Your clips will play here", color = Color(0xFFBEC7BF), fontSize = 11.sp)
+                        }
                     }
-                    Icon(Icons.Default.PlayCircle, null, tint = Paper, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).size(34.dp))
                 }
             }
         }
