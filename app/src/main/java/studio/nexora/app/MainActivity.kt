@@ -114,7 +114,7 @@ private fun NexoraApp() {
                     trimIn = 0f; trimOut = 100f; splitCount = 0; screen = Screen.Editor
                 }
                 Screen.Devices -> DevicesScreen(Modifier.padding(padding))
-                Screen.ThreeD -> ThreeDScreen(Modifier.padding(padding))
+                Screen.ThreeD -> ThreeDPage(Modifier.padding(padding))
             }
         }
     }
@@ -285,7 +285,7 @@ private fun MediaScreen(modifier: Modifier, assets: List<Asset>, onImport: () ->
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column { Text("Media library", fontSize = 21.sp, fontWeight = FontWeight.Bold); Text(assets.size.toString() + " items", color = Grey, fontSize = 12.sp) }
-            Button(onClick = import) { Icon(Icons.Default.Add, null); Text("Import") }
+            Button(onClick = onImport) { Icon(Icons.Default.Add, null); Text("Import") }
         }
         if (assets.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -293,7 +293,7 @@ private fun MediaScreen(modifier: Modifier, assets: List<Asset>, onImport: () ->
                     Icon(Icons.Default.FolderOpen, null, tint = Green, modifier = Modifier.size(42.dp))
                     Text("Your media starts here", fontWeight = FontWeight.SemiBold)
                     Text("Import video, images or audio.", color = Grey, fontSize = 12.sp)
-                    OutlinedButton(onClick = import) { Text("Import media") }
+                    OutlinedButton(onClick = onImport) { Text("Import media") }
                 }
             }
         } else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
