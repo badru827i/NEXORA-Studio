@@ -241,6 +241,7 @@ private fun EditorScreen(
     val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset) {
         buildVideoEffects(cropZoom, rotationDegrees, outputPreset)
     }
+    var audioVolume by remember { mutableFloatStateOf(1f) }
     var trackingMode by remember { mutableStateOf("Object") }
     var targetLocked by remember { mutableStateOf(false) }
     var targetCenterX by remember { mutableFloatStateOf(0.5f) }
@@ -264,7 +265,7 @@ private fun EditorScreen(
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
                 if (previewUri != null) {
                     Box(Modifier.fillMaxSize()) {
-                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize(), videoEffects = activeVideoEffects)
+                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize(), videoEffects = activeVideoEffects, volume = audioVolume)
                         if (tool == "Tracking") {
                             val regionSize = if (trackingMode == "Point") 0.10f else 0.18f
                             BoxWithConstraints(
@@ -399,6 +400,27 @@ private fun EditorScreen(
                         "Split" -> {
                             Text("Place a split marker at the playhead.", color = Grey, fontSize = 12.sp)
                             OutlinedButton(onClick = split) { Icon(Icons.AutoMirrored.Filled.CallSplit, null); Text("Add split marker") }
+                        }
+                        "Audio" -> {
+                            Text("Preview mixer", color = Green, fontWeight = FontWeight.SemiBold)
+                            Text("Adjust the source clip playback level while editing.", color = Grey, fontSize = 12.sp)
+                            Text("Volume · ${(audioVolume * 100).toInt()}%", color = Grey, fontSize = 12.sp)
+                            Slider(
+                                value = audioVolume,
+                                onValueChange = { audioVolume = it.coerceIn(0f, 1f) },
+                                valueRange = 0f..1f
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { audioVolume = 0f }) {
+                                    Icon(Icons.Default.VolumeOff, null)
+                                    Text("Mute")
+                                }
+                                OutlinedButton(onClick = { audioVolume = 1f }) {
+                                    Icon(Icons.Default.VolumeUp, null)
+                                    Text("Reset")
+                                }
+                            }
+                            Text("This control changes preview playback only. Track mixing, fades and final-export gain are the next audio-engine stage.", color = Grey, fontSize = 11.sp)
                         }
                         "Tracking" -> {
                             val supportedMode = trackingMode == "Object" || trackingMode == "Point"
