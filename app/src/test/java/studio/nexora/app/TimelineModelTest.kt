@@ -61,6 +61,29 @@ class TimelineModelTest {
     }
 
     @Test
+    fun trimStartPreservesSourceTimingAndMinimumDuration() {
+        val clip = TimelineClip(id = "clip", assetUri = "asset", label = "A", startMs = 1_000L, durationMs = 5_000L, sourceInMs = 500L)
+        val document = TimelineDocument(listOf(TimelineTrack(id = "video", name = "Video", type = TimelineTrackType.VIDEO, clips = listOf(clip))))
+        val trimmed = document.trimClipStart("video", "clip", 2_000L).tracks.single().clips.single()
+        assertEquals(2_000L, trimmed.startMs)
+        assertEquals(4_000L, trimmed.durationMs)
+        assertEquals(1_500L, trimmed.sourceInMs)
+        val earliest = document.trimClipStart("video", "clip", 0L).tracks.single().clips.single()
+        assertEquals(500L, earliest.startMs)
+        assertEquals(0L, earliest.sourceInMs)
+    }
+
+    @Test
+    fun trimEndCannotExtendClipOrMakeItEmpty() {
+        val clip = TimelineClip(id = "clip", assetUri = "asset", label = "A", startMs = 1_000L, durationMs = 5_000L)
+        val document = TimelineDocument(listOf(TimelineTrack(id = "video", name = "Video", type = TimelineTrackType.VIDEO, clips = listOf(clip))))
+        val shortened = document.trimClipEnd("video", "clip", 4_000L).tracks.single().clips.single()
+        assertEquals(3_000L, shortened.durationMs)
+        val minimum = document.trimClipEnd("video", "clip", 0L).tracks.single().clips.single()
+        assertEquals(1L, minimum.durationMs)
+    }
+
+    @Test
     fun rippleDeleteClosesGapWithoutChangingOtherClipDurations() {
         val first = TimelineClip(id = "a", assetUri = "a", label = "A", startMs = 0L, durationMs = 2_000L)
         val removed = TimelineClip(id = "b", assetUri = "b", label = "B", startMs = 2_000L, durationMs = 1_500L)
