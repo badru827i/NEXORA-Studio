@@ -131,7 +131,7 @@ private fun NexoraApp() {
 private fun EditorScreen(
     modifier: Modifier, assets: List<Asset>, tool: String, selectTool: (String) -> Unit,
     speed: Float, changeSpeed: (Float) -> Unit, trimIn: Float, changeIn: (Float) -> Unit,
-    trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, import: () -> Unit
+    trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit
 ) {
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -222,7 +222,7 @@ private fun EditorScreen(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(onClick = import, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Add, null); Text("Add media") }
+                OutlinedButton(onClick = onImport, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Add, null); Text("Add media") }
                 Button(onClick = { selectTool("Trim") }, modifier = Modifier.weight(1f)) { Text("Edit clip") }
             }
         }
@@ -240,7 +240,7 @@ private fun ToolTile(label: String, icon: ImageVector, active: Boolean, onClick:
 }
 
 @Composable
-private fun MediaScreen(modifier: Modifier, assets: List<Asset>, import: () -> Unit) {
+private fun MediaScreen(modifier: Modifier, assets: List<Asset>, onImport: () -> Unit) {
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column { Text("Media library", fontSize = 21.sp, fontWeight = FontWeight.Bold); Text(assets.size.toString() + " items", color = Grey, fontSize = 12.sp) }
