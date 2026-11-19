@@ -19,7 +19,7 @@ import androidx.media3.ui.PlayerView
 @Composable
 fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, videoEffects: List<Effect> = emptyList()) {
     val context = LocalContext.current
-    val player = remember { ExoPlayer.Builder(context).build() }
+    val player = remember { ExoPlayer.Builder(context).build().apply { setVideoEffects(videoEffects) } }
 
     DisposableEffect(player) {
         onDispose { player.release() }
