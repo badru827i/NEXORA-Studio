@@ -74,6 +74,9 @@ private fun NexoraApp() {
     var rotationDegrees by remember { mutableIntStateOf(0) }
     var outputPreset by remember { mutableStateOf("Original") }
     var timeline by remember { mutableStateOf(TimelineDocument()) }
+    var exportAudioGain by remember { mutableFloatStateOf(1f) }
+    var exportFadeInMs by remember { mutableLongStateOf(0L) }
+    var exportFadeOutMs by remember { mutableLongStateOf(0L) }
     var exportDialog by remember { mutableStateOf(false) }
     var exportRunning by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf("Choose a video and start export.") }
@@ -136,6 +139,9 @@ private fun NexoraApp() {
                             put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble()); put("splitCount", splitCount)
                             put("cropZoom", cropZoom.toDouble()); put("rotationDegrees", rotationDegrees); put("outputPreset", outputPreset)
                             put("timeline", timeline.toJson())
+                            put("exportAudioGain", exportAudioGain.toDouble())
+                            put("exportFadeInMs", exportFadeInMs)
+                            put("exportFadeOutMs", exportFadeOutMs)
                             put("assets", org.json.JSONArray().apply {
                                 assets.forEach { asset ->
                                     put(org.json.JSONObject().put("uri", asset.uri.toString()).put("name", asset.name))
@@ -165,6 +171,9 @@ private fun NexoraApp() {
                             rotationDegrees = safeRotationDegrees(doc.optInt("rotationDegrees", 0))
                             outputPreset = safeOutputPreset(doc.optString("outputPreset", "Original"))
                             timeline = TimelineDocument.fromJson(doc.optString("timeline", ""))
+                            exportAudioGain = doc.optDouble("exportAudioGain", 1.0).toFloat().coerceIn(0f, 1f)
+                            exportFadeInMs = doc.optLong("exportFadeInMs", 0L).coerceIn(0L, 5_000L)
+                            exportFadeOutMs = doc.optLong("exportFadeOutMs", 0L).coerceIn(0L, 5_000L)
                         }
                         screen = Screen.Editor
                     },
@@ -177,7 +186,7 @@ private fun NexoraApp() {
                         activeProjectId = null
                         project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
                         trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"
-                        timeline = TimelineDocument(); screen = Screen.Editor
+                        timeline = TimelineDocument(); exportAudioGain = 1f; exportFadeInMs = 0L; exportFadeOutMs = 0L; screen = Screen.Editor
                     }
                 )
                 Screen.Devices -> DevicesScreen(Modifier.padding(padding))
@@ -191,6 +200,12 @@ private fun NexoraApp() {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (videoAsset == null) "Import a video first. Image and audio files cannot be exported with this single-clip video workflow." else "MP4 · H.264 video · AAC audio · 30 fps")
+                Text("Export volume · ${(exportAudioGain * 100).toInt()}%", color = Green, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                Slider(value = exportAudioGain, onValueChange = { exportAudioGain = it.coerceIn(0f, 1f) }, valueRange = 0f..1f)
+                Text("Fade in · ${exportFadeInMs / 1000f}s", color = Grey, fontSize = 11.sp)
+                Slider(value = exportFadeInMs / 1000f, onValueChange = { exportFadeInMs = (it * 1000f).toLong() }, valueRange = 0f..5f)
+                Text("Fade out · ${exportFadeOutMs / 1000f}s", color = Grey, fontSize = 11.sp)
+                Slider(value = exportFadeOutMs / 1000f, onValueChange = { exportFadeOutMs = (it * 1000f).toLong() }, valueRange = 0f..5f)
                 Text(exportMessage, color = Grey, fontSize = 12.sp)
             }
         },
@@ -202,7 +217,7 @@ private fun NexoraApp() {
                     if (selected != null) {
                         exportRunning = true
                         exportMessage = "Preparing video..."
-                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, object : MediaExportManager.Callback {
+                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, exportAudioGain, exportFadeInMs, exportFadeOutMs, object : MediaExportManager.Callback {
                             override fun onComplete(outputFile: java.io.File, publicUri: Uri?) {
                                 exportRunning = false
                                 exportMessage = if (publicUri != null) {
@@ -611,21 +626,21 @@ private fun TimelineEditorPanel(
                         onClick = {
                             val clip = selectedClip ?: return@OutlinedButton
                             val track = selectedTrack ?: return@OutlinedButton
-                            onDocumentChange(document.moveClip(track.id, clip.id, clip.startMs + 500L))
+                            onDocumentChange(document.moveClipMagnetic(track.id, clip.id, clip.startMs + 500L, 300L))
                         },
                         contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
-                    ) { Text("Move +0.5s", fontSize = 10.sp) }
+                    ) { Text("Magnetic move", fontSize = 10.sp) }
                     IconButton(
                         enabled = selectedClip != null && selectedTrack?.locked == false,
                         onClick = {
                             val clip = selectedClip ?: return@IconButton
                             val track = selectedTrack ?: return@IconButton
-                            onDocumentChange(document.removeClip(track.id, clip.id))
+                            onDocumentChange(document.rippleRemoveClip(track.id, clip.id))
                             selectedClipId = null
                         }
-                    ) { Icon(Icons.Default.DeleteOutline, "Remove clip", tint = Grey) }
+                    ) { Icon(Icons.Default.DeleteOutline, "Ripple delete clip", tint = Grey) }
                 }
-                Text("Pilih track dan klip untuk Split, Move atau Delete. Add clip memasukkan media terpilih ke track.", color = Grey, fontSize = 10.sp)
+                Text("Magnetic move snap ke tepi klip berdekatan. Delete menutup ruang kosong secara ripple.", color = Grey, fontSize = 10.sp)
             }
         }
     }
