@@ -15,6 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CallSplit
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,7 +48,8 @@ class MainActivity : ComponentActivity() {
 private data class Asset(val uri: Uri, val name: String)
 private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices"), ThreeD("3D") }
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.media3.common.util.UnstableApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
+@androidx.media3.common.util.UnstableApi
 @Composable
 private fun NexoraApp() {
     val context = LocalContext.current
@@ -175,7 +179,7 @@ private fun EditorScreen(
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Workspace", color = Grey, fontSize = 13.sp)
-                Row { Icon(Icons.Default.Undo, null, tint = Grey); Spacer(Modifier.width(10.dp)); Icon(Icons.Default.Redo, null, tint = Grey) }
+                Row { Icon(Icons.AutoMirrored.Filled.Undo, null, tint = Grey); Spacer(Modifier.width(10.dp)); Icon(Icons.AutoMirrored.Filled.Redo, null, tint = Grey) }
             }
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
                 if (previewUri != null) {
@@ -222,7 +226,7 @@ private fun EditorScreen(
         item {
             Text("Editing tools", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             val tools = listOf(
-                "Trim" to Icons.Default.ContentCut, "Split" to Icons.Default.CallSplit,
+                "Trim" to Icons.Default.ContentCut, "Split" to Icons.AutoMirrored.Filled.CallSplit,
                 "Crop" to Icons.Default.Crop, "Speed" to Icons.Default.Speed,
                 "Audio" to Icons.Default.GraphicEq, "Text" to Icons.Default.TextFields,
                 "Subtitles" to Icons.Default.Subtitles, "Adjust" to Icons.Default.Tune
