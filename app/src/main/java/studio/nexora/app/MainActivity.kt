@@ -435,11 +435,11 @@ private fun EditorScreen(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
-                                Text("Frames decoded: ${result.framesAnalyzed}", color = Grey, fontSize = 11.sp)
+                                Text("Backend: ${result.backend} · Frames decoded: ${result.framesAnalyzed}", color = Grey, fontSize = 11.sp)
                             }
                             Text(
                                 if (!supportedMode) "Face and camera tracking are future modes. Automatic patch tracking is currently available for Object and Point."
-                                else "Runs offline on the phone CPU. Automatic keyframes are sampled from the video; detailed face and 3D camera solving are separate upgrades.",
+                                else "Runs offline. GPU compute is used when GLES 3.1 compute works on this device; otherwise it falls back to CPU. Face and 3D camera solving are separate upgrades.",
                                 color = Grey,
                                 fontSize = 11.sp
                             )
