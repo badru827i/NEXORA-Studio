@@ -41,7 +41,8 @@ data class MotionTrackingResult(
     val framesAnalyzed: Int,
     val averageConfidence: Float,
     val lostAtMs: Long?,
-    val message: String
+    val message: String,
+    val backend: String = "CPU fallback"
 )
 
 /**
@@ -97,13 +98,15 @@ object MotionTrackingEngine {
         var previousLeft = initialLeft
         var previousTop = initialTop
         var lostAt: Long? = null
+        val gpuSession = GpuBlockMatchingSession.createOrNull()
 
+        try {
         for (frame in frames.drop(1)) {
             validateFrame(frame)
             require(frame.width == first.width && frame.height == first.height) {
                 "All tracking frames must have the same dimensions."
             }
-            val match = findBestMatch(frame, template, previousLeft, previousTop)
+            val match = findBestMatch(frame, template, previousLeft, previousTop, gpuSession)
             if (match.confidence < minimumConfidence) {
                 lostAt = frame.timestampMs
                 break
@@ -126,13 +129,20 @@ object MotionTrackingEngine {
             }
         }
 
+        } finally {
+            runCatching { gpuSession?.close() }
+        }
+
         val average = points.map { it.confidence }.average().toFloat()
         val message = when {
             points.size <= 1 -> "Target could not be followed. Try a clearer, more detailed selection."
             lostAt != null -> "Tracking lost near ${lostAt} ms. ${points.size} keyframes recovered."
             else -> "Tracking complete. ${points.size} keyframes generated."
         }
-        return MotionTrackingResult(points, frames.size, average, lostAt, message)
+        return MotionTrackingResult(
+            points, frames.size, average, lostAt, message,
+            if (gpuSession != null) "GPU compute · OpenGL ES 3.1" else "CPU fallback"
+        )
     }
 
     /**
@@ -216,7 +226,29 @@ object MotionTrackingEngine {
         return Template(width, height, values, samples, sampleSum, energy)
     }
 
-    private fun findBestMatch(frame: TrackingFrame, template: Template, oldLeft: Int, oldTop: Int): Match {
+    private fun findBestMatch(
+        frame: TrackingFrame, template: Template, oldLeft: Int, oldTop: Int,
+        gpu: GpuBlockMatchingSession? = null
+    ): Match {
+        val gpuMatch = runCatching {
+            gpu?.findBestMatch(
+                template.pixels, template.width, template.height,
+                frame.luma, frame.width, frame.height, oldLeft, oldTop
+            )
+        }.getOrNull()
+        if (gpuMatch != null) {
+            val refine = max(2, min(template.width, template.height) / 8)
+            var best = Match(gpuMatch.x, gpuMatch.y, gpuMatch.confidence)
+            val minX = (best.x - refine).coerceAtLeast(0)
+            val maxX = (best.x + refine).coerceAtMost(frame.width - template.width)
+            val minY = (best.y - refine).coerceAtLeast(0)
+            val maxY = (best.y + refine).coerceAtMost(frame.height - template.height)
+            for (y in minY..maxY) for (x in minX..maxX) {
+                val score = correlation(frame, template, x, y)
+                if (score > best.confidence) best = Match(x, y, score)
+            }
+            return best
+        }
         val radiusX = max(template.width, (frame.width * 0.18f).roundToInt())
         val radiusY = max(template.height, (frame.height * 0.18f).roundToInt())
         val coarseStep = max(2, min(template.width, template.height) / 8)
