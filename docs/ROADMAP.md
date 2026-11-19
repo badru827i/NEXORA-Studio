@@ -7,7 +7,10 @@
 - [x] Split marker interaction
 - [x] USB attach/detach detection
 - [x] Android build, lint and unit-test workflow
-- [ ] Persistent projects and autosave
+- [x] Lightweight local SQLite project save and reopen
+- [x] Device inventory for SoC vendor/model, CPU, RAM, Vulkan exposure and thermal state
+- [x] Cache usage report and temporary-cache cleanup
+- [ ] Persistent autosave during editing
 - [ ] Frame-accurate editing and Media3 preview/export
 
 ## Editing suite
