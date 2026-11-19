@@ -62,6 +62,9 @@ private fun NexoraApp() {
     var screen by remember { mutableStateOf(Screen.Editor) }
     var project by remember { mutableStateOf("Untitled project") }
     val assets = remember { mutableStateListOf<Asset>() }
+    val projectDb = remember { ProjectDatabase(context) }
+    var activeProjectId by remember { mutableStateOf<Long?>(null) }
+    var savedProjects by remember { mutableStateOf(projectDb.list()) }
     var tool by remember { mutableStateOf("Trim") }
     var speed by remember { mutableFloatStateOf(1f) }
     var trimIn by remember { mutableFloatStateOf(0f) }
@@ -119,10 +122,45 @@ private fun NexoraApp() {
                     splitCount, { splitCount++ }, { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
                 )
                 Screen.Media -> MediaScreen(Modifier.padding(padding), assets) { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
-                Screen.Projects -> ProjectsScreen(Modifier.padding(padding), project) {
-                    project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
-                    trimIn = 0f; trimOut = 100f; splitCount = 0; screen = Screen.Editor
-                }
+                Screen.Projects -> ProjectsScreen(
+                    Modifier.padding(padding), project, savedProjects,
+                    onSave = {
+                        val document = org.json.JSONObject().apply {
+                            put("tool", tool); put("speed", speed.toDouble())
+                            put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble())
+                            put("assets", org.json.JSONArray().apply {
+                                assets.forEach { asset ->
+                                    put(org.json.JSONObject().put("uri", asset.uri.toString()).put("name", asset.name))
+                                }
+                            })
+                        }.toString()
+                        activeProjectId = projectDb.save(activeProjectId, project, document)
+                        savedProjects = projectDb.list()
+                    },
+                    onOpen = { saved ->
+                        activeProjectId = saved.id
+                        project = saved.name
+                        assets.clear()
+                        runCatching {
+                            val doc = org.json.JSONObject(saved.document)
+                            val array = doc.optJSONArray("assets") ?: org.json.JSONArray()
+                            for (i in 0 until array.length()) {
+                                val item = array.optJSONObject(i) ?: continue
+                                assets.add(Asset(Uri.parse(item.optString("uri")), item.optString("name", "Media")))
+                            }
+                            tool = doc.optString("tool", "Trim")
+                            speed = safeSpeed(doc.optDouble("speed", 1.0).toFloat())
+                            trimIn = doc.optDouble("trimIn", 0.0).toFloat()
+                            trimOut = doc.optDouble("trimOut", 100.0).toFloat()
+                        }
+                        screen = Screen.Editor
+                    },
+                    onNew = {
+                        activeProjectId = null
+                        project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
+                        trimIn = 0f; trimOut = 100f; splitCount = 0; screen = Screen.Editor
+                    }
+                )
                 Screen.Devices -> DevicesScreen(Modifier.padding(padding))
                 Screen.ThreeD -> ThreeDPage(Modifier.padding(padding))
             }
@@ -470,20 +508,48 @@ private fun MediaScreen(modifier: Modifier, assets: List<Asset>, onImport: () ->
 }
 
 @Composable
-private fun ProjectsScreen(modifier: Modifier, project: String, newProject: () -> Unit) {
+private fun ProjectsScreen(
+    modifier: Modifier,
+    project: String,
+    projects: List<SavedProject>,
+    onSave: () -> Unit,
+    onOpen: (SavedProject) -> Unit,
+    onNew: () -> Unit
+) {
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column { Text("Projects", fontSize = 21.sp, fontWeight = FontWeight.Bold); Text("Your creative work", color = Grey, fontSize = 12.sp) }
-            Button(onClick = newProject) { Icon(Icons.Default.Add, null); Text("New") }
+            Column { Text("Projects", fontSize = 21.sp, fontWeight = FontWeight.Bold); Text("Local SQLite library · ${projects.size} saved", color = Grey, fontSize = 12.sp) }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = onSave) { Text("Save") }
+                Button(onClick = onNew) { Icon(Icons.Default.Add, null); Text("New") }
+            }
         }
         Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Folder, null, tint = Green, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(12.dp))
-                Column { Text(project, fontWeight = FontWeight.SemiBold); Text("Current local session", color = Grey, fontSize = 11.sp) }
+                Column { Text(project, fontWeight = FontWeight.SemiBold); Text("Current editing session", color = Grey, fontSize = 11.sp) }
             }
         }
-        Text("Project autosave and reopen are next milestones.", color = Grey, fontSize = 12.sp)
+        if (projects.isEmpty()) {
+            Text("Save this project to keep it on this phone.", color = Grey, fontSize = 12.sp)
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(projects, key = { it.id }) { item ->
+                    Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FolderOpen, null, tint = Green)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(item.name, fontWeight = FontWeight.Medium)
+                                Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(item.updatedAt)), color = Grey, fontSize = 10.sp)
+                            }
+                            TextButton(onClick = { onOpen(item) }) { Text("Open") }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -503,6 +569,25 @@ private fun DevicesScreen(modifier: Modifier) {
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Devices", fontSize = 21.sp, fontWeight = FontWeight.Bold)
         Text("Hardware connections and local render workers.", color = Grey, fontSize = 12.sp)
+        val capabilities = remember { DeviceCapabilityDetector.detect(context) }
+        val cache = remember { CacheManager.report(context) }
+        Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Universal SoC & hardware", fontWeight = FontWeight.SemiBold)
+                Text("${capabilities.socVendor} · ${capabilities.socName}", color = Green, fontSize = 12.sp)
+                Text("${capabilities.manufacturer} ${capabilities.model} · ${capabilities.cpuCores} CPU cores · ${capabilities.cpuAbi}", color = Grey, fontSize = 11.sp)
+                Text("RAM ${capabilities.availableRamMb} / ${capabilities.totalRamMb} MB · Vulkan ${if (capabilities.vulkanAvailable) "available" else "not exposed"} · GLES ${capabilities.glesVersion}", color = Grey, fontSize = 11.sp)
+                Text("Neural API: ${if (capabilities.neuralApiAvailable) "advertised" else "not advertised"} · Thermal: ${capabilities.thermalStatus}", color = Grey, fontSize = 11.sp)
+                Text("Note: NPU availability still requires a compatible vendor runtime and driver.", color = Grey, fontSize = 10.sp)
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Cache", fontWeight = FontWeight.SemiBold)
+                Text("${cache.fileCount} files · ${cache.bytesUsed / (1024L * 1024L)} MB used · ${capabilities.freeStorageMb} MB free", color = Grey, fontSize = 11.sp)
+                OutlinedButton(onClick = { CacheManager.clearTemporary(context) }, modifier = Modifier.fillMaxWidth()) { Text("Clear temporary cache") }
+            }
+        }
         Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
