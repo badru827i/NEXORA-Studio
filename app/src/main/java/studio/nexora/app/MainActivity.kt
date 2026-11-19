@@ -70,6 +70,9 @@ private fun NexoraApp() {
     var trimIn by remember { mutableFloatStateOf(0f) }
     var trimOut by remember { mutableFloatStateOf(100f) }
     var splitCount by remember { mutableIntStateOf(0) }
+    var cropZoom by remember { mutableFloatStateOf(1f) }
+    var rotationDegrees by remember { mutableIntStateOf(0) }
+    var outputPreset by remember { mutableStateOf("Original") }
     var exportDialog by remember { mutableStateOf(false) }
     var exportRunning by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf("Choose a video and start export.") }
@@ -119,7 +122,9 @@ private fun NexoraApp() {
                 Screen.Editor -> EditorScreen(
                     Modifier.padding(padding), assets, videoAsset?.uri, tool, { tool = it }, speed, { speed = safeSpeed(it) },
                     trimIn, { trimIn = safeTrimStart(it, trimOut) }, trimOut, { trimOut = safeTrimEnd(it, trimIn) },
-                    splitCount, { splitCount++ }, { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
+                    splitCount, { splitCount++ }, { picker.launch(arrayOf("video/*", "image/*", "audio/*")) },
+                    cropZoom, { cropZoom = safeCropZoom(it) }, rotationDegrees, { rotationDegrees = safeRotationDegrees(it) },
+                    outputPreset, { outputPreset = safeOutputPreset(it) }
                 )
                 Screen.Media -> MediaScreen(Modifier.padding(padding), assets) { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
                 Screen.Projects -> ProjectsScreen(
@@ -128,6 +133,7 @@ private fun NexoraApp() {
                         val document = org.json.JSONObject().apply {
                             put("tool", tool); put("speed", speed.toDouble())
                             put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble()); put("splitCount", splitCount)
+                            put("cropZoom", cropZoom.toDouble()); put("rotationDegrees", rotationDegrees); put("outputPreset", outputPreset)
                             put("assets", org.json.JSONArray().apply {
                                 assets.forEach { asset ->
                                     put(org.json.JSONObject().put("uri", asset.uri.toString()).put("name", asset.name))
@@ -153,6 +159,9 @@ private fun NexoraApp() {
                             trimIn = doc.optDouble("trimIn", 0.0).toFloat()
                             trimOut = doc.optDouble("trimOut", 100.0).toFloat()
                             splitCount = doc.optInt("splitCount", 0).coerceAtLeast(0)
+                            cropZoom = safeCropZoom(doc.optDouble("cropZoom", 1.0).toFloat())
+                            rotationDegrees = safeRotationDegrees(doc.optInt("rotationDegrees", 0))
+                            outputPreset = safeOutputPreset(doc.optString("outputPreset", "Original"))
                         }
                         screen = Screen.Editor
                     },
@@ -164,7 +173,7 @@ private fun NexoraApp() {
                     onNew = {
                         activeProjectId = null
                         project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
-                        trimIn = 0f; trimOut = 100f; splitCount = 0; screen = Screen.Editor
+                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"; screen = Screen.Editor
                     }
                 )
                 Screen.Devices -> DevicesScreen(Modifier.padding(padding))
@@ -189,7 +198,7 @@ private fun NexoraApp() {
                     if (selected != null) {
                         exportRunning = true
                         exportMessage = "Preparing video..."
-                        exporter.export(selected.uri, trimIn, trimOut, speed, object : MediaExportManager.Callback {
+                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, object : MediaExportManager.Callback {
                             override fun onComplete(outputFile: java.io.File, publicUri: Uri?) {
                                 exportRunning = false
                                 exportMessage = if (publicUri != null) {
@@ -224,7 +233,9 @@ private fun NexoraApp() {
 private fun EditorScreen(
     modifier: Modifier, assets: List<Asset>, previewUri: Uri?, tool: String, selectTool: (String) -> Unit,
     speed: Float, changeSpeed: (Float) -> Unit, trimIn: Float, changeIn: (Float) -> Unit,
-    trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit
+    trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit,
+    cropZoom: Float, changeCropZoom: (Float) -> Unit, rotationDegrees: Int, changeRotationDegrees: (Int) -> Unit,
+    outputPreset: String, changeOutputPreset: (String) -> Unit
 ) {
     val context = LocalContext.current
     var trackingMode by remember { mutableStateOf("Object") }
@@ -250,7 +261,7 @@ private fun EditorScreen(
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
                 if (previewUri != null) {
                     Box(Modifier.fillMaxSize()) {
-                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize())
+                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize(), videoEffects = buildVideoEffects(cropZoom, rotationDegrees, outputPreset))
                         if (tool == "Tracking") {
                             val regionSize = if (trackingMode == "Point") 0.10f else 0.18f
                             BoxWithConstraints(
@@ -335,7 +346,7 @@ private fun EditorScreen(
             Text("Editing tools", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             val tools = listOf(
                 "Trim" to Icons.Default.ContentCut, "Split" to Icons.AutoMirrored.Filled.CallSplit,
-                "Crop" to Icons.Default.Crop, "Speed" to Icons.Default.Speed,
+                "Crop" to Icons.Default.Crop, "Rotate" to Icons.Default.RotateRight, "Resize" to Icons.Default.AspectRatio, "Speed" to Icons.Default.Speed,
                 "Audio" to Icons.Default.GraphicEq, "Text" to Icons.Default.TextFields,
                 "Subtitles" to Icons.Default.Subtitles, "Adjust" to Icons.Default.Tune,
                 "Tracking" to Icons.Default.GpsFixed
@@ -354,6 +365,29 @@ private fun EditorScreen(
                             Slider(trimIn, changeIn, valueRange = 0f..99f)
                             Text("Out point: " + trimOut.toInt() + "%", color = Grey, fontSize = 12.sp)
                             Slider(trimOut, changeOut, valueRange = 1f..100f)
+                        }
+                        "Crop" -> {
+                            Text("Center crop · ${String.format("%.2f", cropZoom)}×", color = Green, fontWeight = FontWeight.SemiBold)
+                            Slider(value = cropZoom, onValueChange = changeCropZoom, valueRange = 1f..2.5f)
+                            Text("Zoom in to crop more of the frame.", color = Grey, fontSize = 11.sp)
+                            TextButton(onClick = { changeCropZoom(1f) }) { Text("Reset crop") }
+                        }
+                        "Rotate" -> {
+                            Text("Rotation · ${rotationDegrees}°", color = Green, fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(0, 90, 180, 270).forEach { degrees ->
+                                    FilterChip(selected = rotationDegrees == degrees, onClick = { changeRotationDegrees(degrees) }, label = { Text("${degrees}°") })
+                                }
+                            }
+                        }
+                        "Resize" -> {
+                            Text("Export resolution", color = Grey, fontSize = 12.sp)
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("Original", "480p", "720p", "1080p").forEach { preset ->
+                                    FilterChip(selected = outputPreset == preset, onClick = { changeOutputPreset(preset) }, label = { Text(preset) })
+                                }
+                            }
+                            Text("Resolution is applied during export. Smaller output can reduce file size.", color = Grey, fontSize = 11.sp)
                         }
                         "Speed" -> {
                             Text(String.format("%.2f", speed) + "×", color = Green, fontWeight = FontWeight.Bold)
@@ -648,3 +682,7 @@ private fun ThreeDPage(modifier: Modifier) {
         }
     }
 }
+
+private fun safeCropZoom(value: Float): Float = if (value.isFinite()) value.coerceIn(1f, 2.5f) else 1f
+private fun safeRotationDegrees(value: Int): Int = if (value in listOf(0, 90, 180, 270)) value else 0
+private fun safeOutputPreset(value: String): String = if (value in listOf("Original", "480p", "720p", "1080p")) value else "Original"
