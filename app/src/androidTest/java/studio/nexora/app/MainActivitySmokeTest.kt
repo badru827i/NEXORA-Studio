@@ -1,26 +1,28 @@
 package studio.nexora.app
 
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.core.app.ActivityScenario
-import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.action.ViewActions.click
-import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
-import androidx.test.espresso.matcher.ViewMatchers.withText
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {
+    @get:Rule
+    val composeRule = createAndroidComposeRule<MainActivity>()
+
     @Test
-    fun launchesAndShowsEditorHome() {
-        ActivityScenario.launch(MainActivity::class.java).use {
-            onView(withText("NEXORA STUDIO")).check(matches(isDisplayed()))
-            onView(withText("Workspace")).check(matches(isDisplayed()))
-            onView(withText("Timeline")).check(matches(isDisplayed()))
-            onView(withText("Tracking")).perform(click())
-            onView(withText("Motion Tracker")).check(matches(isDisplayed()))
-            onView(withText("Track video automatically")).check(matches(isDisplayed()))
-        }
+    fun launchesAndOpensMotionTrackerPanel() {
+        composeRule.onNodeWithText("NEXORA STUDIO").assertIsDisplayed()
+        composeRule.onNodeWithText("Workspace").assertIsDisplayed()
+        composeRule.onNodeWithText("Timeline").assertIsDisplayed()
+
+        composeRule.onNodeWithText("Tracking").performScrollTo().performClick()
+        composeRule.onNodeWithText("Motion Tracker").assertIsDisplayed()
+        composeRule.onNodeWithText("Track video automatically").assertIsDisplayed()
     }
 }
