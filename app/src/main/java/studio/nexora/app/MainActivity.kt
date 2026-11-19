@@ -127,7 +127,7 @@ private fun NexoraApp() {
                     onSave = {
                         val document = org.json.JSONObject().apply {
                             put("tool", tool); put("speed", speed.toDouble())
-                            put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble())
+                            put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble()); put("splitCount", splitCount)
                             put("assets", org.json.JSONArray().apply {
                                 assets.forEach { asset ->
                                     put(org.json.JSONObject().put("uri", asset.uri.toString()).put("name", asset.name))
@@ -152,6 +152,7 @@ private fun NexoraApp() {
                             speed = safeSpeed(doc.optDouble("speed", 1.0).toFloat())
                             trimIn = doc.optDouble("trimIn", 0.0).toFloat()
                             trimOut = doc.optDouble("trimOut", 100.0).toFloat()
+                            splitCount = doc.optInt("splitCount", 0).coerceAtLeast(0)
                         }
                         screen = Screen.Editor
                     },
@@ -514,6 +515,7 @@ private fun ProjectsScreen(
     projects: List<SavedProject>,
     onSave: () -> Unit,
     onOpen: (SavedProject) -> Unit,
+    onDelete: (Long) -> Unit,
     onNew: () -> Unit
 ) {
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -545,6 +547,7 @@ private fun ProjectsScreen(
                                 Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(item.updatedAt)), color = Grey, fontSize = 10.sp)
                             }
                             TextButton(onClick = { onOpen(item) }) { Text("Open") }
+                            IconButton(onClick = { onDelete(item.id) }) { Icon(Icons.Default.DeleteOutline, "Delete project", tint = Grey) }
                         }
                     }
                 }
