@@ -205,7 +205,6 @@ object MotionTrackingEngine {
         for (y in 0 until height) for (x in 0 until width) {
             val value = (frame.luma[(top + y) * frame.width + left + x].toInt() and 0xff).toFloat()
             values[y * width + x] = value
-            sum += value
         }
         val stride = max(1, min(width, height) / 20)
         val samples = buildList {
