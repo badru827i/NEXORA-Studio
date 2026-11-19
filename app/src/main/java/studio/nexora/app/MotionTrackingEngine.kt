@@ -189,8 +189,10 @@ object MotionTrackingEngine {
             val blue = pixel and 0xff
             gray[i] = ((red * 77 + green * 150 + blue * 29) shr 8).toByte()
         }
+        val outputWidth = scaled.width
+        val outputHeight = scaled.height
         if (scaled !== this) scaled.recycle()
-        return TrackingFrame(timestampMs, scaled.width, scaled.height, gray)
+        return TrackingFrame(timestampMs, outputWidth, outputHeight, gray)
     }
 
     private fun validateFrame(frame: TrackingFrame) {
@@ -200,7 +202,6 @@ object MotionTrackingEngine {
 
     private fun createTemplate(frame: TrackingFrame, left: Int, top: Int, width: Int, height: Int): Template {
         val values = FloatArray(width * height)
-        var sum = 0.0
         for (y in 0 until height) for (x in 0 until width) {
             val value = (frame.luma[(top + y) * frame.width + left + x].toInt() and 0xff).toFloat()
             values[y * width + x] = value
