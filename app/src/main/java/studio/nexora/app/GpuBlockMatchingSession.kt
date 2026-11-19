@@ -29,6 +29,9 @@ class GpuBlockMatchingSession private constructor() : AutoCloseable {
     private val buffers = IntArray(3)
     var successfulDispatches: Int = 0
         private set
+    private var usable = true
+
+    fun disable() { usable = false }
 
     init {
         initializeEgl()
@@ -47,6 +50,7 @@ class GpuBlockMatchingSession private constructor() : AutoCloseable {
         oldLeft: Int,
         oldTop: Int
     ): GpuMatch? {
+        if (!usable) return null
         checkCurrent()
         val radiusX = max(templateWidth, (frameWidth * 0.18f).toInt())
         val radiusY = max(templateHeight, (frameHeight * 0.18f).toInt())
