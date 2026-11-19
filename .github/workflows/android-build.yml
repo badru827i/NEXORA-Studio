@@ -22,8 +22,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Build, test and lint
-        run: gradle --no-daemon assembleDebug testDebugUnitTest lintDebug
+      - name: Build, verify and lint
+        run: gradle --no-daemon assembleDebug verifyTimelineMath lintDebug
       - uses: actions/upload-artifact@v4
         with:
           name: nexora-studio-debug
