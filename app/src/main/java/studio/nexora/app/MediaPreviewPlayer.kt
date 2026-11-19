@@ -13,7 +13,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
-@OptIn(UnstableApi::class)
+@UnstableApi
 @Composable
 fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier) {
     val context = LocalContext.current
