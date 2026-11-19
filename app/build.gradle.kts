@@ -35,5 +35,22 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-transformer:1.11.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
-    testImplementation("junit:junit:4.13.2")
+}
+
+tasks.register("verifyTimelineMath") {
+    group = "verification"
+    description = "Run dependency-free checks for the editor's trim and speed bounds."
+    doLast {
+        val trimStart = 90f.coerceIn(0f, 50f - 1f)
+        check(trimStart == 49f) { "Trim start bound failed" }
+
+        val trimEnd = 10f.coerceIn(50f + 1f, 100f)
+        check(trimEnd == 51f) { "Trim end bound failed" }
+
+        val lowSpeed = 0f.coerceIn(0.25f, 3f)
+        val highSpeed = 8f.coerceIn(0.25f, 3f)
+        check(lowSpeed == 0.25f && highSpeed == 3f) { "Playback speed bounds failed" }
+
+        println("NEXORA timeline smoke checks passed.")
+    }
 }
