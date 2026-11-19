@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -522,6 +523,8 @@ private fun TimelineEditorPanel(
         mutableStateOf(document.tracks.firstOrNull()?.id.orEmpty())
     }
     var selectedClipId by remember { mutableStateOf<String?>(null) }
+    var pixelsPerSecond by remember { mutableFloatStateOf(120f) }
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
     val selectedTrack = document.tracks.firstOrNull { it.id == selectedTrackId }
     val selectedClip = selectedTrack?.clips?.firstOrNull { it.id == selectedClipId }
 
@@ -532,6 +535,11 @@ private fun TimelineEditorPanel(
         }
         Card(colors = CardDefaults.cardColors(containerColor = Paper), shape = RoundedCornerShape(15.dp)) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Zoom", color = Grey, fontSize = 11.sp)
+                    Slider(value = pixelsPerSecond, onValueChange = { pixelsPerSecond = it }, valueRange = 60f..220f, modifier = Modifier.weight(1f))
+                    Text("${pixelsPerSecond.toInt()} px/s", color = Grey, fontSize = 10.sp)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TimelineTrackType.values().forEach { type ->
                         OutlinedButton(
@@ -571,15 +579,72 @@ private fun TimelineEditorPanel(
                         } else {
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 track.clips.forEach { clip ->
+                                    val isSelected = selectedClipId == clip.id && selectedTrackId == track.id
+                                    val clipWidth = (clip.durationMs / 1000f * pixelsPerSecond).coerceIn(88f, 420f)
                                     Surface(
                                         onClick = { selectedTrackId = track.id; selectedClipId = clip.id },
+                                        modifier = Modifier
+                                            .width(clipWidth.dp)
+                                            .then(
+                                                if (track.locked) Modifier else Modifier.pointerInput(clip.id, track.id, pixelsPerSecond) {
+                                                    var totalDragPx = 0f
+                                                    detectDragGestures(
+                                                        onDragStart = { totalDragPx = 0f },
+                                                        onDragCancel = { totalDragPx = 0f },
+                                                        onDragEnd = { totalDragPx = 0f }
+                                                    ) { change, dragAmount ->
+                                                        change.consume()
+                                                        totalDragPx += dragAmount.x
+                                                        val deltaMs = (totalDragPx / density / pixelsPerSecond * 1000f).toLong()
+                                                        selectedTrackId = track.id
+                                                        selectedClipId = clip.id
+                                                        onDocumentChange(document.moveClipMagnetic(track.id, clip.id, clip.startMs + deltaMs, 150L))
+                                                    }
+                                                }
+                                            ),
                                         shape = RoundedCornerShape(7.dp),
-                                        color = if (selectedClipId == clip.id && selectedTrackId == track.id) SoftGreen else Color(0xFFF0F1EF),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, if (selectedClipId == clip.id && selectedTrackId == track.id) Green else Edge)
+                                        color = if (isSelected) SoftGreen else Color(0xFFF0F1EF),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Green else Edge)
                                     ) {
-                                        Column(Modifier.width(118.dp).padding(8.dp)) {
-                                            Text(clip.label, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                            Text("${clip.startMs / 1000}s · ${clip.durationMs / 1000}s", color = Grey, fontSize = 9.sp)
+                                        Row(Modifier.height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                Modifier
+                                                    .width(12.dp)
+                                                    .fillMaxHeight()
+                                                    .background(if (isSelected) Green.copy(alpha = 0.22f) else Color(0xFFE1E5E0))
+                                                    .then(if (track.locked) Modifier else Modifier.pointerInput(clip.id, pixelsPerSecond) {
+                                                        var totalDragPx = 0f
+                                                        detectDragGestures(onDragStart = { totalDragPx = 0f }) { change, dragAmount ->
+                                                            change.consume()
+                                                            totalDragPx += dragAmount.x
+                                                            val deltaMs = (totalDragPx / density / pixelsPerSecond * 1000f).toLong()
+                                                            selectedTrackId = track.id
+                                                            selectedClipId = clip.id
+                                                            onDocumentChange(document.trimClipStart(track.id, clip.id, clip.startMs + deltaMs))
+                                                        }
+                                                    })
+                                            )
+                                            Column(Modifier.weight(1f).padding(horizontal = 5.dp)) {
+                                                Text(clip.label, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                                Text("${clip.startMs / 1000f}s · ${clip.durationMs / 1000f}s", color = Grey, fontSize = 9.sp)
+                                            }
+                                            Box(
+                                                Modifier
+                                                    .width(12.dp)
+                                                    .fillMaxHeight()
+                                                    .background(if (isSelected) Green.copy(alpha = 0.22f) else Color(0xFFE1E5E0))
+                                                    .then(if (track.locked) Modifier else Modifier.pointerInput(clip.id, pixelsPerSecond) {
+                                                        var totalDragPx = 0f
+                                                        detectDragGestures(onDragStart = { totalDragPx = 0f }) { change, dragAmount ->
+                                                            change.consume()
+                                                            totalDragPx += dragAmount.x
+                                                            val deltaMs = (totalDragPx / density / pixelsPerSecond * 1000f).toLong()
+                                                            selectedTrackId = track.id
+                                                            selectedClipId = clip.id
+                                                            onDocumentChange(document.trimClipEnd(track.id, clip.id, clip.endMs + deltaMs))
+                                                        }
+                                                    })
+                                            )
                                         }
                                     }
                                 }
@@ -616,8 +681,7 @@ private fun TimelineEditorPanel(
                         onClick = {
                             val clip = selectedClip ?: return@OutlinedButton
                             val track = selectedTrack ?: return@OutlinedButton
-                            val updated = document.splitClip(track.id, clip.id, clip.startMs + clip.durationMs / 2)
-                            onDocumentChange(updated)
+                            onDocumentChange(document.splitClip(track.id, clip.id, clip.startMs + clip.durationMs / 2))
                         },
                         contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
                     ) { Text("Split", fontSize = 10.sp) }
@@ -640,7 +704,7 @@ private fun TimelineEditorPanel(
                         }
                     ) { Icon(Icons.Default.DeleteOutline, "Ripple delete clip", tint = Grey) }
                 }
-                Text("Magnetic move snap ke tepi klip berdekatan. Delete menutup ruang kosong secara ripple.", color = Grey, fontSize = 10.sp)
+                Text("Drag klip untuk alih posisi. Tarik pemegang kiri/kanan untuk trim. Zoom mengubah skala masa.", color = Grey, fontSize = 10.sp)
             }
         }
     }
