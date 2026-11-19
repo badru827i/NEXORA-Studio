@@ -4,11 +4,14 @@ import android.content.*
 import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,12 +26,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
+import java.util.concurrent.Executors
 
 private val Bg = Color(0xFFF5F5F2)
 private val Paper = Color.White
@@ -177,10 +182,20 @@ private fun EditorScreen(
     speed: Float, changeSpeed: (Float) -> Unit, trimIn: Float, changeIn: (Float) -> Unit,
     trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit
 ) {
+    val context = LocalContext.current
     var trackingMode by remember { mutableStateOf("Object") }
     var targetLocked by remember { mutableStateOf(false) }
-    var trackingKeyframes by remember { mutableIntStateOf(0) }
-    var trackingMessage by remember { mutableStateOf("Choose a tracking mode and lock a target.") }
+    var targetCenterX by remember { mutableFloatStateOf(0.5f) }
+    var targetCenterY by remember { mutableFloatStateOf(0.5f) }
+    var trackingMessage by remember { mutableStateOf("Tap the video preview to place the tracking area.") }
+    var trackingRunning by remember { mutableStateOf(false) }
+    var trackingProgress by remember { mutableFloatStateOf(0f) }
+    var trackingResult by remember { mutableStateOf<MotionTrackingResult?>(null) }
+    val trackingExecutor = remember { Executors.newSingleThreadExecutor() }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    DisposableEffect(trackingExecutor) {
+        onDispose { trackingExecutor.shutdownNow() }
+    }
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -190,7 +205,33 @@ private fun EditorScreen(
             }
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
                 if (previewUri != null) {
-                    MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize())
+                    Box(Modifier.fillMaxSize()) {
+                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize())
+                        if (tool == "Tracking") {
+                            val regionSize = if (trackingMode == "Point") 0.10f else 0.18f
+                            BoxWithConstraints(
+                                Modifier.fillMaxSize().pointerInput(trackingMode) {
+                                    detectTapGestures { offset ->
+                                        targetCenterX = (offset.x / size.width).coerceIn(0.08f, 0.92f)
+                                        targetCenterY = (offset.y / size.height).coerceIn(0.08f, 0.92f)
+                                        targetLocked = false
+                                        trackingResult = null
+                                        trackingMessage = "Tracking area moved. Lock it to start analysis."
+                                    }
+                                }
+                            ) {
+                                val markerWidth = maxWidth * regionSize
+                                val markerHeight = maxHeight * regionSize
+                                Box(
+                                    Modifier.offset(
+                                        x = maxWidth * targetCenterX - markerWidth / 2,
+                                        y = maxHeight * targetCenterY - markerHeight / 2
+                                    ).size(markerWidth, markerHeight)
+                                        .border(2.dp, Green, RoundedCornerShape(7.dp))
+                                )
+                            }
+                        }
+                    }
                 } else {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -224,6 +265,22 @@ private fun EditorScreen(
                         Spacer(Modifier.width(8.dp))
                         Box(Modifier.weight(1f).height(22.dp).background(Color(0xFFF0F1EF), RoundedCornerShape(7.dp))) {
                             Box(Modifier.fillMaxWidth(0.65f).fillMaxHeight().background(Color(0xFFE1E7E1), RoundedCornerShape(7.dp)))
+                        }
+                    }
+                    trackingResult?.let { result ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.GpsFixed, null, tint = Green)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Motion track · ${result.points.size} keyframes", color = Green, fontSize = 11.sp)
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().height(22.dp).background(SoftGreen, RoundedCornerShape(7.dp)).padding(horizontal = 5.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            result.points.take(80).forEach {
+                                Box(Modifier.size(5.dp).background(Green, CircleShape))
+                            }
                         }
                     }
                     Text(if (assets.isEmpty()) "No clip yet · import media to populate timeline" else "Clip 1 · " + (splitCount + 1) + " segment(s)", color = Grey, fontSize = 11.sp)
@@ -263,37 +320,91 @@ private fun EditorScreen(
                             OutlinedButton(onClick = split) { Icon(Icons.AutoMirrored.Filled.CallSplit, null); Text("Add split marker") }
                         }
                         "Tracking" -> {
+                            val supportedMode = trackingMode == "Object" || trackingMode == "Point"
                             Text("Motion Tracker", fontWeight = FontWeight.SemiBold, color = Green)
-                            Text("Select a target type, lock the subject, then add tracking keyframes along the clip.", color = Grey, fontSize = 12.sp)
+                            Text("Tap the preview to place the target box. Lock it, then analyze the imported clip locally.", color = Grey, fontSize = 12.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf("Object", "Point", "Face", "Camera").forEach { mode ->
                                     FilterChip(selected = trackingMode == mode, onClick = {
                                         trackingMode = mode
                                         targetLocked = false
-                                        trackingMessage = mode + " mode selected. Lock a target to begin."
+                                        trackingResult = null
+                                        trackingMessage = if (mode == "Object" || mode == "Point")
+                                            mode + " tracking ready. Tap the preview to position the target."
+                                        else mode + " tracking is planned; automatic tracking currently supports Object and Point."
                                     }, label = { Text(mode, fontSize = 11.sp) })
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Icon(Icons.Default.GpsFixed, null, tint = if (targetLocked) Green else Grey)
                                 Column(Modifier.weight(1f)) {
-                                    Text(if (targetLocked) "Target locked" else "No target locked", fontWeight = FontWeight.Medium)
+                                    Text(if (targetLocked) "Target locked" else "Target not locked", fontWeight = FontWeight.Medium)
                                     Text(trackingMessage, color = Grey, fontSize = 11.sp)
                                 }
                                 OutlinedButton(onClick = {
                                     targetLocked = !targetLocked
-                                    trackingMessage = if (targetLocked) trackingMode + " target ready. Add keyframes as you move through the clip." else "Target unlocked."
-                                }) { Text(if (targetLocked) "Unlock" else "Lock target") }
+                                    trackingMessage = if (targetLocked) "Target locked at ${(targetCenterX * 100).toInt()}%, ${(targetCenterY * 100).toInt()}%." else "Target unlocked."
+                                }, enabled = previewUri != null) { Text(if (targetLocked) "Unlock" else "Lock") }
                             }
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Keyframes: $trackingKeyframes", color = Grey, fontSize = 12.sp)
-                                Button(enabled = targetLocked, onClick = {
-                                    trackingKeyframes++
-                                    trackingMessage = "Keyframe $trackingKeyframes added. Automatic frame analysis is the next tracking-engine milestone."
-                                }) { Icon(Icons.Default.Add, null); Text("Add keyframe") }
+                            if (trackingRunning) {
+                                LinearProgressIndicator(progress = { trackingProgress }, modifier = Modifier.fillMaxWidth())
+                                Text("Analyzing frames: ${(trackingProgress * 100).toInt()}%", color = Grey, fontSize = 11.sp)
                             }
-                            LinearProgressIndicator(progress = { if (trackingKeyframes == 0) 0f else (trackingKeyframes.coerceAtMost(10) / 10f) }, modifier = Modifier.fillMaxWidth())
-                            Text("Current stage: manual target/keyframe authoring. Automatic object detection and frame-to-frame tracking are not enabled yet.", color = Grey, fontSize = 11.sp)
+                            Button(
+                                enabled = previewUri != null && targetLocked && !trackingRunning && supportedMode,
+                                onClick = {
+                                    val selectedUri = previewUri ?: return@Button
+                                    trackingRunning = true
+                                    trackingProgress = 0f
+                                    trackingResult = null
+                                    trackingMessage = "Decoding video frames..."
+                                    val regionSize = if (trackingMode == "Point") 0.10f else 0.18f
+                                    trackingExecutor.execute {
+                                        runCatching {
+                                            MotionTrackingEngine.trackVideo(
+                                                context,
+                                                selectedUri,
+                                                TrackingRegion(targetCenterX, targetCenterY, regionSize, regionSize)
+                                            ) { completed, total ->
+                                                mainHandler.post { trackingProgress = completed.toFloat() / total.coerceAtLeast(1) }
+                                            }
+                                        }.onSuccess { result ->
+                                            mainHandler.post {
+                                                trackingResult = result
+                                                trackingRunning = false
+                                                trackingProgress = 1f
+                                                trackingMessage = result.message
+                                            }
+                                        }.onFailure { error ->
+                                            mainHandler.post {
+                                                trackingRunning = false
+                                                trackingMessage = error.message ?: "Tracking failed."
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.TrackChanges, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (trackingRunning) "Tracking..." else "Track video automatically")
+                            }
+                            trackingResult?.let { result ->
+                                Text(
+                                    "${result.points.size} keyframes · ${(result.averageConfidence * 100).toInt()}% average confidence" +
+                                        (result.lostAtMs?.let { " · lost at ${it} ms" } ?: ""),
+                                    color = Green,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text("Frames decoded: ${result.framesAnalyzed}", color = Grey, fontSize = 11.sp)
+                            }
+                            Text(
+                                if (!supportedMode) "Face and camera tracking are future modes. Automatic patch tracking is currently available for Object and Point."
+                                else "Runs offline on the phone CPU. Automatic keyframes are sampled from the video; detailed face and 3D camera solving are separate upgrades.",
+                                color = Grey,
+                                fontSize = 11.sp
+                            )
                         }
                         else -> Text(when(tool) {
                             "Crop" -> "Crop, resize and rotation controls will be added to the transform panel."
