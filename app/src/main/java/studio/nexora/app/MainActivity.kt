@@ -570,7 +570,7 @@ private fun DevicesScreen(modifier: Modifier) {
         Text("Devices", fontSize = 21.sp, fontWeight = FontWeight.Bold)
         Text("Hardware connections and local render workers.", color = Grey, fontSize = 12.sp)
         val capabilities = remember { DeviceCapabilityDetector.detect(context) }
-        val cache = remember { CacheManager.report(context) }
+        var cache by remember { mutableStateOf(CacheManager.report(context)) }
         Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Universal SoC & hardware", fontWeight = FontWeight.SemiBold)
@@ -585,7 +585,7 @@ private fun DevicesScreen(modifier: Modifier) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cache", fontWeight = FontWeight.SemiBold)
                 Text("${cache.fileCount} files · ${cache.bytesUsed / (1024L * 1024L)} MB used · ${capabilities.freeStorageMb} MB free", color = Grey, fontSize = 11.sp)
-                OutlinedButton(onClick = { CacheManager.clearTemporary(context) }, modifier = Modifier.fillMaxWidth()) { Text("Clear temporary cache") }
+                OutlinedButton(onClick = { CacheManager.clearTemporary(context); cache = CacheManager.report(context) }, modifier = Modifier.fillMaxWidth()) { Text("Clear temporary cache") }
             }
         }
         Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
