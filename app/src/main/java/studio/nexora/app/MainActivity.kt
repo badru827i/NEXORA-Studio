@@ -39,6 +39,7 @@ private val Green = Color(0xFF416B55)
 private val SoftGreen = Color(0xFFEAF1EC)
 private val PreviewBg = Color(0xFF292D2A)
 
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
