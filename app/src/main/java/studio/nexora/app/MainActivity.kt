@@ -49,7 +49,7 @@ private data class Asset(val uri: Uri, val name: String)
 private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices"), ThreeD("3D") }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@androidx.media3.common.util.UnstableApi
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @Composable
 private fun NexoraApp() {
     val context = LocalContext.current
@@ -169,6 +169,7 @@ private fun NexoraApp() {
     )
 }
 
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @Composable
 private fun EditorScreen(
     modifier: Modifier, assets: List<Asset>, previewUri: Uri?, tool: String, selectTool: (String) -> Unit,
@@ -252,7 +253,7 @@ private fun EditorScreen(
                         }
                         "Split" -> {
                             Text("Place a split marker at the playhead.", color = Grey, fontSize = 12.sp)
-                            OutlinedButton(onClick = split) { Icon(Icons.Default.CallSplit, null); Text("Add split marker") }
+                            OutlinedButton(onClick = split) { Icon(Icons.AutoMirrored.Filled.CallSplit, null); Text("Add split marker") }
                         }
                         else -> Text(when(tool) {
                             "Crop" -> "Crop, resize and rotation controls will be added to the transform panel."
