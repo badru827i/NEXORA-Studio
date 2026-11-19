@@ -1,6 +1,7 @@
 package studio.nexora.app
 
 import android.net.Uri
+import android.view.LayoutInflater
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,9 +37,9 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier) {
     AndroidView(
         modifier = modifier,
         factory = { viewContext ->
-            PlayerView(viewContext).apply {
-                useController = true
-                this.player = player
+            (LayoutInflater.from(viewContext)
+                .inflate(R.layout.nexora_player_view, null, false) as PlayerView).apply {
+                player = player
             }
         },
         update = { view -> view.player = player }
