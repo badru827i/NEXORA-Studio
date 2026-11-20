@@ -530,6 +530,27 @@ private fun TimelineEditorPanel(
     val audioAsset = assets.firstOrNull { context.contentResolver.getType(it.uri)?.startsWith("audio/") == true }
     val selectedTrack = document.tracks.firstOrNull { it.id == selectedTrackId }
     val selectedClip = selectedTrack?.clips?.firstOrNull { it.id == selectedClipId }
+    var subtitleImportMessage by remember { mutableStateOf("") }
+    val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val track = document.tracks.firstOrNull { it.id == selectedTrackId && it.type == TimelineTrackType.TEXT }
+        if (uri != null && track != null) {
+            val imported = runCatching {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { parseSrt(it.readText()) }
+                    ?: emptyList()
+            }
+            imported.onSuccess { cues ->
+                if (cues.isEmpty()) {
+                    subtitleImportMessage = "No valid SRT subtitle cues found."
+                } else {
+                    onDocumentChange(document.addSubtitleCues(track.id, cues))
+                    subtitleImportMessage = "Imported " + cues.size + " subtitle cues."
+                }
+            }.onFailure { subtitleImportMessage = "Could not read this subtitle file." }
+        }
+    }
 
     fun updateSelectedTextClip(transform: (TimelineClip) -> TimelineClip) {
         val track = selectedTrack ?: return
@@ -806,6 +827,11 @@ private fun TimelineEditorPanel(
                             },
                             contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
                         ) { Text("+ Subtitle", fontSize = 10.sp) }
+                        OutlinedButton(
+                            enabled = !selectedTrack.locked,
+                            onClick = { subtitlePicker.launch(arrayOf("*/*")) },
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
+                        ) { Text("Import SRT", fontSize = 10.sp) }
                     }
                     OutlinedButton(
                         enabled = selectedClip != null && selectedTrack?.locked == false,
@@ -834,6 +860,9 @@ private fun TimelineEditorPanel(
                             selectedClipId = null
                         }
                     ) { Icon(Icons.Default.DeleteOutline, "Ripple delete clip", tint = Grey) }
+                }
+                if (subtitleImportMessage.isNotBlank()) {
+                    Text(subtitleImportMessage, color = Green, fontSize = 10.sp)
                 }
                 Text("Drag klip untuk alih posisi. Tarik pemegang kiri/kanan untuk trim. Zoom mengubah skala masa.", color = Grey, fontSize = 10.sp)
             }
