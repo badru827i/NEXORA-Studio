@@ -184,7 +184,9 @@ class MediaExportManager(private val context: Context) {
         document.exportValidationError()?.let { throw IllegalArgumentException(it) }
         val sequences = mutableListOf<EditedMediaItemSequence>()
         val safeSpeed = playbackSpeed.coerceIn(0.25f, 3f)
-        val totalDurationMs = document.durationMs
+        val textClips = document.tracks
+            .filter { it.type == TimelineTrackType.TEXT && !it.muted }
+            .flatMap { it.clips.filter { clip -> !clip.muted && clip.label.isNotBlank() } }
 
         document.tracks.forEach { track ->
             val clips = track.clips
@@ -246,10 +248,17 @@ class MediaExportManager(private val context: Context) {
                     }.build()
                     listOf(ToInt16PcmAudioProcessor(), GainProcessor(provider))
                 }
-                val itemEffects = Effects(
-                    audioProcessors,
-                    if (isVideo) buildVideoEffects(cropZoom, rotationDegrees, outputPreset) else emptyList()
-                )
+                val videoEffects = if (isVideo) {
+                    buildVideoEffects(cropZoom, rotationDegrees, outputPreset).toMutableList().apply {
+                        buildTimelineTextOverlayEffect(
+                            textClips = textClips,
+                            videoClipStartMs = clip.startMs,
+                            videoClipDurationMs = clip.durationMs,
+                            playbackSpeed = safeSpeed
+                        )?.let { add(it) }
+                    }
+                } else emptyList()
+                val itemEffects = Effects(audioProcessors, videoEffects)
                 val editedItem = EditedMediaItem.Builder(mediaItem)
                     .setSpeed(speedProvider)
                     .setEffects(itemEffects)
