@@ -71,6 +71,36 @@ class TimelineModelTest {
     }
 
     @Test
+    fun parsesSrtCuesAndPreservesMultilineText() {
+        val source = """1
+00:00:01,200 --> 00:00:03,500
+Hello NEXORA
+Second line
+
+2
+00:00:04.000 --> 00:00:05.250
+Subtitle two
+"""
+        val cues = parseSrt(source)
+        assertEquals(2, cues.size)
+        assertEquals(1_200L, cues[0].startMs)
+        assertEquals(3_500L, cues[0].endMs)
+        assertEquals("Hello NEXORA\nSecond line", cues[0].text)
+        assertEquals(4_000L, cues[1].startMs)
+    }
+
+    @Test
+    fun subtitleImportCreatesTimedTextTrackClips() {
+        val document = TimelineDocument().addTrack(TimelineTrackType.TEXT)
+        val track = document.tracks.last()
+        val imported = document.addSubtitleCues(track.id, listOf(SrtCue(1_000L, 2_500L, "Test subtitle")))
+        val cue = imported.tracks.last().clips.single()
+        assertEquals("SUBTITLE", cue.textRole)
+        assertEquals(1_000L, cue.startMs)
+        assertEquals(1_500L, cue.durationMs)
+    }
+
+    @Test
     fun magneticMoveSnapsClipEdgeToNearbyClip() {
         val first = TimelineClip(id = "a", assetUri = "a", label = "A", startMs = 0L, durationMs = 2_000L)
         val second = TimelineClip(id = "b", assetUri = "b", label = "B", startMs = 3_000L, durationMs = 1_000L)
