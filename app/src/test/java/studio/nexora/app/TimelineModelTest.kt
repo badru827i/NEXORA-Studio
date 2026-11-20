@@ -101,6 +101,31 @@ class TimelineModelTest {
     }
 
     @Test
+    fun exportValidationRequiresAtLeastOneVideoClip() {
+        val audio = TimelineTrack(
+            id = "audio", name = "Audio 1", type = TimelineTrackType.AUDIO,
+            clips = listOf(TimelineClip(assetUri = "content://audio/1", label = "Music", startMs = 0L, durationMs = 4_000L))
+        )
+        assertTrue(TimelineDocument(listOf(audio)).exportValidationError()?.contains("video clip") == true)
+    }
+
+    @Test
+    fun exportValidationRejectsOverlappingClipsOnSameTrack() {
+        val first = TimelineClip(id = "a", assetUri = "content://video/1", label = "A", startMs = 0L, durationMs = 3_000L)
+        val second = TimelineClip(id = "b", assetUri = "content://video/2", label = "B", startMs = 2_000L, durationMs = 2_000L)
+        val track = TimelineTrack(id = "video", name = "Video 1", type = TimelineTrackType.VIDEO, clips = listOf(first, second))
+        assertTrue(TimelineDocument(listOf(track)).exportValidationError()?.contains("overlapping") == true)
+    }
+
+    @Test
+    fun exportValidationAllowsGapsBetweenClips() {
+        val first = TimelineClip(id = "a", assetUri = "content://video/1", label = "A", startMs = 0L, durationMs = 2_000L)
+        val second = TimelineClip(id = "b", assetUri = "content://video/2", label = "B", startMs = 4_000L, durationMs = 2_000L)
+        val track = TimelineTrack(id = "video", name = "Video 1", type = TimelineTrackType.VIDEO, clips = listOf(first, second))
+        assertEquals(null, TimelineDocument(listOf(track)).exportValidationError())
+    }
+
+    @Test
     fun addedTracksUseReadableNames() {
         val document = TimelineDocument().addTrack(TimelineTrackType.AUDIO).addTrack(TimelineTrackType.TEXT)
         assertEquals(listOf("Video 1", "Audio 1", "Audio 2", "Text 1"), document.tracks.map { it.name })
