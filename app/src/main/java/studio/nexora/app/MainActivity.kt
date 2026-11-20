@@ -496,8 +496,8 @@ private fun EditorScreen(
                         else -> Text(when(tool) {
                             "Crop" -> "Crop, resize and rotation controls will be added to the transform panel."
                             "Audio" -> "Audio volume, fades and waveform controls will be added to the mixer."
-                            "Text" -> "Text overlays and title templates are planned."
-                            "Subtitles" -> "Subtitle tracks and timing tools are planned."
+                            "Text" -> "Add a Text track in the timeline, then add or select a clip to edit its content, size, color and position."
+                            "Subtitles" -> "Select a Text track to add timed subtitles manually or import an SRT file."
                             else -> "Color, exposure and look controls are planned."
                         }, color = Grey, fontSize = 12.sp)
                     }
