@@ -15,9 +15,11 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.common.audio.GainProcessor
 import androidx.media3.common.audio.DefaultGainProvider
+import androidx.media3.common.audio.ToInt16PcmAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -45,6 +47,7 @@ class MediaExportManager(private val context: Context) {
         audioGain: Float = 1f,
         fadeInMs: Long = 0L,
         fadeOutMs: Long = 0L,
+        timeline: TimelineDocument? = null,
         callback: Callback
     ) {
         Thread {
@@ -114,6 +117,23 @@ class MediaExportManager(private val context: Context) {
                         .setFrameRate(30)
                         .build()
 
+                    val timelineComposition = timeline
+                        ?.takeIf { document -> document.tracks.any { track ->
+                            track.type == TimelineTrackType.VIDEO && track.clips.isNotEmpty()
+                        } }
+                        ?.let { document ->
+                            buildTimelineComposition(
+                                document = document,
+                                playbackSpeed = safeSpeed,
+                                cropZoom = cropZoom,
+                                rotationDegrees = rotationDegrees,
+                                outputPreset = outputPreset,
+                                globalAudioGain = gain,
+                                fadeInMs = fadeInMs,
+                                fadeOutMs = fadeOutMs
+                            )
+                        }
+
                     val listener = object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                             Thread {
@@ -132,18 +152,121 @@ class MediaExportManager(private val context: Context) {
                         }
                     }
 
-                    Transformer.Builder(context)
+                    val transformer = Transformer.Builder(context)
                         .setVideoMimeType(MimeTypes.VIDEO_H264)
                         .setAudioMimeType(MimeTypes.AUDIO_AAC)
                         .addListener(listener)
                         .build()
-                        .start(editedItem, outputFile.absolutePath)
+                    if (timelineComposition != null) {
+                        transformer.start(timelineComposition, outputFile.absolutePath)
+                    } else {
+                        transformer.start(editedItem, outputFile.absolutePath)
+                    }
                 } catch (error: Exception) {
                     outputFile.delete()
                     callback.onError(error.message ?: "Could not start video export.")
                 }
             }
         }.start()
+    }
+
+    
+    private fun buildTimelineComposition(
+        document: TimelineDocument,
+        playbackSpeed: Float,
+        cropZoom: Float,
+        rotationDegrees: Int,
+        outputPreset: String,
+        globalAudioGain: Float,
+        fadeInMs: Long,
+        fadeOutMs: Long
+    ): Composition {
+        val sequences = mutableListOf<EditedMediaItemSequence>()
+        val safeSpeed = playbackSpeed.coerceIn(0.25f, 3f)
+        val totalDurationMs = document.durationMs
+
+        document.tracks.forEach { track ->
+            val clips = track.clips
+                .filter { it.assetUri.isNotBlank() && !it.assetUri.startsWith("text://") }
+                .sortedBy { it.startMs }
+            if (clips.isEmpty()) return@forEach
+
+            val trackTypes = when (track.type) {
+                TimelineTrackType.VIDEO -> setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO)
+                TimelineTrackType.AUDIO -> setOf(C.TRACK_TYPE_AUDIO)
+                TimelineTrackType.TEXT -> return@forEach
+            }
+            val sequence = EditedMediaItemSequence.Builder(trackTypes)
+            var cursorMs = 0L
+
+            clips.forEach { clip ->
+                require(clip.startMs >= cursorMs) {
+                    "Track ${track.name} has overlapping clips. Move clips so they do not overlap before export."
+                }
+                if (clip.startMs > cursorMs) {
+                    sequence.addGap((clip.startMs - cursorMs) * 1_000L)
+                }
+
+                val sourceUri = Uri.parse(clip.assetUri)
+                val clipEndMs = clip.sourceInMs + clip.durationMs
+                val mediaItem = MediaItem.Builder()
+                    .setUri(sourceUri)
+                    .setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(clip.sourceInMs)
+                            .setEndPositionMs(clipEndMs)
+                            .build()
+                    )
+                    .build()
+
+                val isVideo = track.type == TimelineTrackType.VIDEO
+                val speedProvider = object : SpeedProvider {
+                    override fun getSpeed(presentationTimeUs: Long): Float =
+                        if (isVideo) safeSpeed else 1f
+
+                    override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
+                }
+                val clipGain = if (track.muted || clip.muted) 0f else {
+                    (clip.volume.coerceIn(0f, 1f) * globalAudioGain).coerceIn(0f, 1f)
+                }
+                val audioProcessors = if (track.type == TimelineTrackType.AUDIO || clipGain < 0.999f ||
+                    fadeInMs > 0L || fadeOutMs > 0L) {
+                    val outputDurationUs = ((clip.durationMs.toDouble() / (if (isVideo) safeSpeed else 1f)) * 1_000.0).toLong()
+                    val safeFadeInUs = fadeInMs.coerceAtLeast(0L).times(1_000L).coerceAtMost(outputDurationUs)
+                    val safeFadeOutUs = fadeOutMs.coerceAtLeast(0L).times(1_000L).coerceAtMost(outputDurationUs)
+                    val provider = DefaultGainProvider.Builder(clipGain).apply {
+                        if (safeFadeInUs > 0L) addFadeAt(0L, safeFadeInUs, DefaultGainProvider.FADE_IN_LINEAR)
+                        if (safeFadeOutUs > 0L) {
+                            addFadeAt(
+                                (outputDurationUs - safeFadeOutUs).coerceAtLeast(0L),
+                                safeFadeOutUs,
+                                DefaultGainProvider.FADE_OUT_LINEAR
+                            )
+                        }
+                    }.build()
+                    listOf(ToInt16PcmAudioProcessor(), GainProcessor(provider))
+                } else {
+                    emptyList()
+                }
+                val itemEffects = Effects(
+                    audioProcessors,
+                    if (isVideo) buildVideoEffects(cropZoom, rotationDegrees, outputPreset) else emptyList()
+                )
+                val editedItem = EditedMediaItem.Builder(mediaItem)
+                    .setSpeed(speedProvider)
+                    .setEffects(itemEffects)
+                    .setFrameRate(30)
+                    .build()
+                sequence.addItem(editedItem)
+                cursorMs = clip.endMs
+            }
+            sequences += sequence.build()
+        }
+
+        require(sequences.any { it.trackTypes.contains(C.TRACK_TYPE_VIDEO) }) {
+            "Add at least one video clip to a Video track before exporting."
+        }
+        return Composition.Builder(sequences).build()
     }
 
     private fun readDuration(uri: Uri): Long {
