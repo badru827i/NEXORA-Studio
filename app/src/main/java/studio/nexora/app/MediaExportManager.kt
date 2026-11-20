@@ -181,6 +181,7 @@ class MediaExportManager(private val context: Context) {
         fadeInMs: Long,
         fadeOutMs: Long
     ): Composition {
+        document.exportValidationError()?.let { throw IllegalArgumentException(it) }
         val sequences = mutableListOf<EditedMediaItemSequence>()
         val safeSpeed = playbackSpeed.coerceIn(0.25f, 3f)
         val totalDurationMs = document.durationMs
