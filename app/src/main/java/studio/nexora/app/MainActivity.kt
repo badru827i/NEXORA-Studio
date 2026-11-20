@@ -531,6 +531,16 @@ private fun TimelineEditorPanel(
     val selectedTrack = document.tracks.firstOrNull { it.id == selectedTrackId }
     val selectedClip = selectedTrack?.clips?.firstOrNull { it.id == selectedClipId }
 
+    fun updateSelectedTextClip(transform: (TimelineClip) -> TimelineClip) {
+        val track = selectedTrack ?: return
+        val clip = selectedClip ?: return
+        onDocumentChange(document.copy(tracks = document.tracks.map { current ->
+            if (current.id != track.id) current else current.copy(
+                clips = current.clips.map { item -> if (item.id == clip.id) transform(item) else item }
+            )
+        }))
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Timeline", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
@@ -554,6 +564,87 @@ private fun TimelineEditorPanel(
                             },
                             contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
                         ) { Text("+ ${type.name.lowercase().replaceFirstChar { it.uppercase() }}", fontSize = 10.sp) }
+                    }
+                }
+                if (selectedTrack?.type == TimelineTrackType.TEXT && selectedClip != null) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAF7))) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Text & subtitle editor", fontWeight = FontWeight.SemiBold, color = Green)
+                            OutlinedTextField(
+                                value = selectedClip.label,
+                                onValueChange = { value -> updateSelectedTextClip { it.copy(label = value.take(240)) } },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Text content") },
+                                minLines = 1,
+                                maxLines = 3
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("TITLE", "SUBTITLE").forEach { role ->
+                                    FilterChip(
+                                        selected = selectedClip.textRole == role,
+                                        onClick = {
+                                            updateSelectedTextClip {
+                                                it.copy(
+                                                    textRole = role,
+                                                    textSizeScale = if (role == "SUBTITLE") 0.042f else 0.06f,
+                                                    textPosition = if (role == "SUBTITLE") "BOTTOM" else it.textPosition
+                                                )
+                                            }
+                                        },
+                                        label = { Text(if (role == "TITLE") "Title" else "Subtitle") }
+                                    )
+                                }
+                                FilterChip(
+                                    selected = selectedClip.textBold,
+                                    onClick = { updateSelectedTextClip { it.copy(textBold = !it.textBold) } },
+                                    label = { Text("Bold") }
+                                )
+                            }
+                            Text("Font size · " + (selectedClip.textSizeScale * 100).toInt() + "% of frame", color = Grey, fontSize = 11.sp)
+                            Slider(
+                                value = selectedClip.textSizeScale,
+                                onValueChange = { size -> updateSelectedTextClip { it.copy(textSizeScale = size) } },
+                                valueRange = 0.025f..0.12f
+                            )
+                            Text("Text color", color = Grey, fontSize = 11.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(
+                                    "White" to 0xFFFFFFFF.toInt(),
+                                    "Yellow" to 0xFFFFD54F.toInt(),
+                                    "Black" to 0xFF171717.toInt()
+                                ).forEach { (name, colorValue) ->
+                                    FilterChip(
+                                        selected = selectedClip.textColor == colorValue,
+                                        onClick = { updateSelectedTextClip { it.copy(textColor = colorValue) } },
+                                        label = { Text(name) }
+                                    )
+                                }
+                            }
+                            Text("Position", color = Grey, fontSize = 11.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("TOP" to "Top", "CENTER" to "Center", "BOTTOM" to "Bottom").forEach { (value, label) ->
+                                    FilterChip(
+                                        selected = selectedClip.textPosition == value,
+                                        onClick = { updateSelectedTextClip { it.copy(textPosition = value) } },
+                                        label = { Text(label) }
+                                    )
+                                }
+                            }
+                            FilterChip(
+                                selected = selectedClip.textBackgroundColor != 0,
+                                onClick = {
+                                    updateSelectedTextClip {
+                                        it.copy(textBackgroundColor = if (it.textBackgroundColor == 0) 0x99000000.toInt() else 0)
+                                    }
+                                },
+                                label = { Text("Background") }
+                            )
+                            Text(
+                                "Timing: " + (selectedClip.startMs / 1000f) + "s – " + (selectedClip.endMs / 1000f) + "s. Drag or trim this clip on the Text track.",
+                                color = Grey,
+                                fontSize = 10.sp
+                            )
+                        }
                     }
                 }
                 document.tracks.forEach { track ->
@@ -682,9 +773,10 @@ private fun TimelineEditorPanel(
                             if (track.type == TimelineTrackType.TEXT || asset != null) {
                                 val clip = TimelineClip(
                                     assetUri = asset?.uri?.toString() ?: "text://title",
-                                    label = asset?.name ?: "Title",
+                                    label = if (track.type == TimelineTrackType.TEXT) "New title" else asset?.name ?: "Clip",
                                     startMs = document.durationMs,
-                                    durationMs = 5_000L
+                                    durationMs = 5_000L,
+                                    textRole = "TITLE"
                                 )
                                 val updated = document.addClip(track.id, clip)
                                 onDocumentChange(updated)
@@ -693,6 +785,28 @@ private fun TimelineEditorPanel(
                         },
                         contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
                     ) { Text("+ Add clip", fontSize = 10.sp) }
+                    if (selectedTrack?.type == TimelineTrackType.TEXT) {
+                        OutlinedButton(
+                            enabled = !selectedTrack.locked,
+                            onClick = {
+                                val track = selectedTrack
+                                if (track != null) {
+                                    val clip = TimelineClip(
+                                        assetUri = "text://subtitle",
+                                        label = "New subtitle",
+                                        startMs = document.durationMs,
+                                        durationMs = 3_000L,
+                                        textRole = "SUBTITLE",
+                                        textSizeScale = 0.042f,
+                                        textPosition = "BOTTOM"
+                                    )
+                                    onDocumentChange(document.addClip(track.id, clip))
+                                    selectedClipId = clip.id
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
+                        ) { Text("+ Subtitle", fontSize = 10.sp) }
+                    }
                     OutlinedButton(
                         enabled = selectedClip != null && selectedTrack?.locked == false,
                         onClick = {
