@@ -37,6 +37,28 @@ data class TimelineDocument(
     val durationMs: Long
         get() = tracks.flatMap { it.clips }.maxOfOrNull { it.endMs } ?: 0L
 
+    fun exportValidationError(): String? {
+        val hasVideo = tracks.any { track ->
+            track.type == TimelineTrackType.VIDEO && track.clips.any {
+                it.assetUri.isNotBlank() && !it.assetUri.startsWith("text://") && it.durationMs > 0L
+            }
+        }
+        if (!hasVideo) return "Add at least one video clip to a Video track before exporting."
+
+        tracks.filter { it.type == TimelineTrackType.VIDEO || it.type == TimelineTrackType.AUDIO }
+            .forEach { track ->
+                var cursorMs = 0L
+                track.clips.sortedBy { it.startMs }.forEach { clip ->
+                    if (clip.durationMs <= 0L) return "Track ${track.name} contains an empty clip."
+                    if (clip.startMs < cursorMs) {
+                        return "Track ${track.name} has overlapping clips. Move clips so they do not overlap before export."
+                    }
+                    cursorMs = clip.endMs
+                }
+            }
+        return null
+    }
+
     fun addTrack(type: TimelineTrackType): TimelineDocument {
         val index = tracks.count { it.type == type } + 1
         val prefix = when (type) {
