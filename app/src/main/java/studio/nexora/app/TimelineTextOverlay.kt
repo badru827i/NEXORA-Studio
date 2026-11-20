@@ -12,6 +12,7 @@ import androidx.media3.effect.CanvasOverlay
 import androidx.media3.effect.OverlayEffect
 
 @UnstableApi
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 private class TimelineTextCanvasOverlay(
     private val textClip: TimelineClip,
     private val videoClipStartMs: Long,
@@ -73,6 +74,7 @@ private class TimelineTextCanvasOverlay(
 }
 
 @UnstableApi
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 fun buildTimelineTextOverlayEffect(
     textClips: List<TimelineClip>,
     videoClipStartMs: Long,
