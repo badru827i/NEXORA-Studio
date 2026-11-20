@@ -78,4 +78,3 @@ fun TimelineDocument.addSubtitleCues(trackId: String, cues: List<SrtCue>): Timel
             )
         )
     }
-}
