@@ -14,7 +14,13 @@ data class TimelineClip(
     val durationMs: Long,
     val sourceInMs: Long = 0L,
     val volume: Float = 1f,
-    val muted: Boolean = false
+    val muted: Boolean = false,
+    val textRole: String = "TITLE",
+    val textColor: Int = 0xFFFFFFFF.toInt(),
+    val textBackgroundColor: Int = 0x99000000.toInt(),
+    val textSizeScale: Float = 0.06f,
+    val textPosition: String = "BOTTOM",
+    val textBold: Boolean = true
 ) {
     val endMs: Long get() = startMs + durationMs
 }
@@ -195,7 +201,13 @@ data class TimelineDocument(
                             .put("durationMs", clip.durationMs)
                             .put("sourceInMs", clip.sourceInMs)
                             .put("volume", clip.volume.coerceIn(0f, 1f).toDouble())
-                            .put("muted", clip.muted))
+                            .put("muted", clip.muted)
+                            .put("textRole", clip.textRole)
+                            .put("textColor", clip.textColor)
+                            .put("textBackgroundColor", clip.textBackgroundColor)
+                            .put("textSizeScale", clip.textSizeScale.coerceIn(0.025f, 0.12f).toDouble())
+                            .put("textPosition", clip.textPosition)
+                            .put("textBold", clip.textBold))
                     }
                 }))
         }
@@ -221,7 +233,13 @@ data class TimelineDocument(
                         durationMs = duration,
                         sourceInMs = clip.optLong("sourceInMs", 0L).coerceAtLeast(0L),
                         volume = clip.optDouble("volume", 1.0).toFloat().coerceIn(0f, 1f),
-                        muted = clip.optBoolean("muted", false)
+                        muted = clip.optBoolean("muted", false),
+                        textRole = clip.optString("textRole", "TITLE").takeIf { it in listOf("TITLE", "SUBTITLE") } ?: "TITLE",
+                        textColor = clip.optInt("textColor", 0xFFFFFFFF.toInt()),
+                        textBackgroundColor = clip.optInt("textBackgroundColor", 0x99000000.toInt()),
+                        textSizeScale = clip.optDouble("textSizeScale", 0.06).toFloat().coerceIn(0.025f, 0.12f),
+                        textPosition = clip.optString("textPosition", "BOTTOM").takeIf { it in listOf("TOP", "CENTER", "BOTTOM") } ?: "BOTTOM",
+                        textBold = clip.optBoolean("textBold", true)
                     )
                 }
                 TimelineTrack(
