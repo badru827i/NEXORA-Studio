@@ -8,7 +8,7 @@ data class SrtCue(
     val durationMs: Long get() = endMs - startMs
 }
 
-private val srtTimestampPattern = Regex("""(?:(\\d+):)?(\\d{2}):(\\d{2})[,.](\\d{3})""")
+private val srtTimestampPattern = Regex("""(?:(\d+):)?(\d{2}):(\d{2})[,.](\d{3})""")
 
 private fun parseSrtTimestamp(value: String): Long? {
     val match = srtTimestampPattern.matchEntire(value.trim()) ?: return null
@@ -21,9 +21,9 @@ private fun parseSrtTimestamp(value: String): Long? {
 }
 
 fun parseSrt(content: String): List<SrtCue> {
-    val lines = content.removePrefix("\\uFEFF")
-        .replace("\\r\\n", "\\n")
-        .replace('\\r', '\\n')
+    val lines = content.removePrefix("\uFEFF")
+        .replace("\r\n", "\n")
+        .replace('\r', '\n')
         .lines()
     val cues = mutableListOf<SrtCue>()
     var index = 0
@@ -32,7 +32,7 @@ fun parseSrt(content: String): List<SrtCue> {
         while (index < lines.size && lines[index].isBlank()) index++
         if (index >= lines.size) break
 
-        // SRT cue numbers are optional; locate the next timing line.
+        // Cue numbers are optional; find the next timing line.
         var timingIndex = index
         while (timingIndex < lines.size && !lines[timingIndex].contains("-->")) {
             timingIndex++
@@ -44,8 +44,9 @@ fun parseSrt(content: String): List<SrtCue> {
             index = timingIndex + 1
             continue
         }
+
         val start = parseSrtTimestamp(timing[0])
-        val endToken = timing[1].trim().split(Regex("\\s+"), limit = 2).firstOrNull().orEmpty()
+        val endToken = timing[1].trim().split(Regex("""\s+"""), limit = 2).firstOrNull().orEmpty()
         val end = parseSrtTimestamp(endToken)
 
         val textLines = mutableListOf<String>()
@@ -54,7 +55,7 @@ fun parseSrt(content: String): List<SrtCue> {
             textLines += lines[index].trimEnd()
             index++
         }
-        val cueText = textLines.joinToString("\\n").trim()
+        val cueText = textLines.joinToString("\n").trim()
         if (start != null && end != null && end > start && cueText.isNotBlank()) {
             cues += SrtCue(start, end, cueText.take(240))
         }
@@ -77,3 +78,4 @@ fun TimelineDocument.addSubtitleCues(trackId: String, cues: List<SrtCue>): Timel
             )
         )
     }
+}
