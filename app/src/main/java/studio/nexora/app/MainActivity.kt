@@ -552,7 +552,7 @@ private fun TimelineEditorPanel(
         }
     }
 
-    fun updateSelectedTextClip(transform: (TimelineClip) -> TimelineClip) {
+    fun updateSelectedClip(transform: (TimelineClip) -> TimelineClip) {
         val track = selectedTrack ?: return
         val clip = selectedClip ?: return
         onDocumentChange(document.copy(tracks = document.tracks.map { current ->
@@ -561,6 +561,9 @@ private fun TimelineEditorPanel(
             )
         }))
     }
+
+    fun updateSelectedTextClip(transform: (TimelineClip) -> TimelineClip) =
+        updateSelectedClip(transform)
 
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -585,6 +588,26 @@ private fun TimelineEditorPanel(
                             },
                             contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
                         ) { Text("+ ${type.name.lowercase().replaceFirstChar { it.uppercase() }}", fontSize = 10.sp) }
+                    }
+                }
+                if (selectedTrack?.type in setOf(TimelineTrackType.VIDEO, TimelineTrackType.AUDIO) && selectedClip != null) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAF7))) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text("Clip audio mixer", fontWeight = FontWeight.SemiBold, color = Green)
+                            Text("Volume · ${(selectedClip.volume * 100).toInt()}%", color = Grey, fontSize = 11.sp)
+                            Slider(
+                                value = selectedClip.volume.coerceIn(0f, 1f),
+                                onValueChange = { volume -> updateSelectedClip { it.copy(volume = volume.coerceIn(0f, 1f)) } },
+                                valueRange = 0f..1f
+                            )
+                            FilterChip(
+                                selected = selectedClip.muted,
+                                onClick = { updateSelectedClip { it.copy(muted = !it.muted) } },
+                                label = { Text(if (selectedClip.muted) "Clip muted" else "Mute clip") },
+                                leadingIcon = { Icon(if (selectedClip.muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, null) }
+                            )
+                            Text("These settings are applied to the final timeline export.", color = Grey, fontSize = 10.sp)
+                        }
                     }
                 }
                 if (selectedTrack?.type == TimelineTrackType.TEXT && selectedClip != null) {
@@ -679,6 +702,23 @@ private fun TimelineEditorPanel(
                             }
                             Spacer(Modifier.weight(1f))
                             Text("${track.clips.size} clips", color = Grey, fontSize = 10.sp)
+                            if (track.type != TimelineTrackType.TEXT) {
+                                IconButton(
+                                    onClick = {
+                                        onDocumentChange(document.copy(tracks = document.tracks.map {
+                                            if (it.id == track.id) it.copy(muted = !it.muted) else it
+                                        }))
+                                    },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        if (track.muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                        if (track.muted) "Unmute track" else "Mute track",
+                                        tint = if (track.muted) Green else Grey,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
                             IconButton(onClick = {
                                 onDocumentChange(document.copy(tracks = document.tracks.map {
                                     if (it.id == track.id) it.copy(locked = !it.locked) else it
