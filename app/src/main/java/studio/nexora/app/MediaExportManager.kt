@@ -229,8 +229,7 @@ class MediaExportManager(private val context: Context) {
                 val clipGain = if (track.muted || clip.muted) 0f else {
                     (clip.volume.coerceIn(0f, 1f) * globalAudioGain).coerceIn(0f, 1f)
                 }
-                val audioProcessors = if (track.type == TimelineTrackType.AUDIO || clipGain < 0.999f ||
-                    fadeInMs > 0L || fadeOutMs > 0L) {
+                val audioProcessors = run {
                     val outputDurationUs = ((clip.durationMs.toDouble() / (if (isVideo) safeSpeed else 1f)) * 1_000.0).toLong()
                     val safeFadeInUs = fadeInMs.coerceAtLeast(0L).times(1_000L).coerceAtMost(outputDurationUs)
                     val safeFadeOutUs = fadeOutMs.coerceAtLeast(0L).times(1_000L).coerceAtMost(outputDurationUs)
@@ -245,8 +244,6 @@ class MediaExportManager(private val context: Context) {
                         }
                     }.build()
                     listOf(ToInt16PcmAudioProcessor(), GainProcessor(provider))
-                } else {
-                    emptyList()
                 }
                 val itemEffects = Effects(
                     audioProcessors,
