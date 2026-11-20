@@ -49,6 +49,28 @@ class TimelineModelTest {
     }
 
     @Test
+    fun textOverlayStyleAndSubtitleRoleRoundTripThroughJson() {
+        val title = TimelineClip(
+            id = "title", assetUri = "text://title", label = "Hello NEXORA",
+            startMs = 1_000L, durationMs = 4_000L,
+            textRole = "SUBTITLE", textColor = 0xFFFFD54F.toInt(),
+            textBackgroundColor = 0, textSizeScale = 0.045f,
+            textPosition = "TOP", textBold = false
+        )
+        val document = TimelineDocument(
+            listOf(TimelineTrack(id = "text", name = "Text 1", type = TimelineTrackType.TEXT, clips = listOf(title)))
+        )
+        val restored = TimelineDocument.fromJson(document.toJson()).tracks.single().clips.single()
+
+        assertEquals("SUBTITLE", restored.textRole)
+        assertEquals(0xFFFFD54F.toInt(), restored.textColor)
+        assertEquals(0, restored.textBackgroundColor)
+        assertEquals(0.045f, restored.textSizeScale, 0.0001f)
+        assertEquals("TOP", restored.textPosition)
+        assertFalse(restored.textBold)
+    }
+
+    @Test
     fun magneticMoveSnapsClipEdgeToNearbyClip() {
         val first = TimelineClip(id = "a", assetUri = "a", label = "A", startMs = 0L, durationMs = 2_000L)
         val second = TimelineClip(id = "b", assetUri = "b", label = "B", startMs = 3_000L, durationMs = 1_000L)
