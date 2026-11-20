@@ -22,7 +22,7 @@ private fun parseSrtTimestamp(value: String): Long? {
 
 fun parseSrt(content: String): List<SrtCue> {
     val normalized = content.removePrefix("\uFEFF").replace("\r\n", "\n").replace('\r', '\n')
-    return normalized.split(Regex("\n\\s*\n"))
+    return normalized.split(Regex("\n[ \\t]*\n"))
         .mapNotNull { block ->
             val lines = block.lines().map { it.trimEnd() }.filter { it.isNotBlank() }
             val timingIndex = lines.indexOfFirst { it.contains("-->") }
