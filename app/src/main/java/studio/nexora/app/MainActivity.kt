@@ -404,7 +404,7 @@ private fun EditorScreen(
                                     Text("Reset")
                                 }
                             }
-                            Text("This control changes preview playback only. Track mixing, fades and final-export gain are the next audio-engine stage.", color = Grey, fontSize = 11.sp)
+                            Text("Preview volume affects playback only. Clip and track mixing, mute and export fades are available in the timeline and export controls.", color = Grey, fontSize = 11.sp)
                         }
                         "Tracking" -> {
                             val supportedMode = trackingMode == "Object" || trackingMode == "Point"
