@@ -6,6 +6,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
+import android.text.TextPaint
 import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.CanvasOverlay
@@ -29,7 +30,7 @@ private class TimelineTextCanvasOverlay(
         val padding = (width * 0.025f).coerceAtLeast(12f)
         val maxTextWidth = (width * 0.88f).toInt().coerceAtLeast(1)
         val textSize = (height * textClip.textSizeScale.coerceIn(0.025f, 0.12f)).coerceAtLeast(18f)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = textClip.textColor
             this.textSize = textSize
             typeface = Typeface.create(
