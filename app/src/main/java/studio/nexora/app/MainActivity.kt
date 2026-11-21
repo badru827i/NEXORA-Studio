@@ -600,6 +600,101 @@ private fun TimelineEditorPanel(
                         }
                     }
                 }
+                if (selectedClip != null && selectedTrack?.locked == false) {
+                    var keyframeProperty by remember(selectedClip.id) { mutableStateOf(KeyframeProperty.POSITION_X) }
+                    var keyframeEasing by remember(selectedClip.id) { mutableStateOf(KeyframeEasing.LINEAR) }
+                    var keyframeTimeMs by remember(selectedClip.id) { mutableLongStateOf(0L) }
+                    var keyframeValue by remember(selectedClip.id) { mutableFloatStateOf(0f) }
+                    var propertyMenu by remember { mutableStateOf(false) }
+                    var easingMenu by remember { mutableStateOf(false) }
+                    val propertyOptions = KeyframeProperty.values()
+                    val matchingKeyframes = selectedClip.keyframes.filter { it.property == keyframeProperty }.sortedBy { it.timeMs }
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAF7))) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Keyframe editor", fontWeight = FontWeight.SemiBold, color = Green)
+                                Text("${selectedClip.keyframes.size} diamonds", color = Grey, fontSize = 10.sp)
+                            }
+                            Box {
+                                OutlinedButton(onClick = { propertyMenu = true }) {
+                                    Text(keyframeProperty.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() })
+                                    Icon(Icons.Default.ArrowDropDown, null)
+                                }
+                                DropdownMenu(expanded = propertyMenu, onDismissRequest = { propertyMenu = false }) {
+                                    propertyOptions.forEach { property ->
+                                        DropdownMenuItem(
+                                            text = { Text(property.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }) },
+                                            onClick = {
+                                                keyframeProperty = property
+                                                matchingKeyframes.firstOrNull()?.let {
+                                                    keyframeTimeMs = it.timeMs
+                                                    keyframeValue = it.value
+                                                    keyframeEasing = it.easing
+                                                }
+                                                propertyMenu = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            Text("Keyframe time · ${(keyframeTimeMs / 1000f)}s", color = Grey, fontSize = 11.sp)
+                            Slider(
+                                value = keyframeTimeMs.toFloat().coerceIn(0f, selectedClip.durationMs.toFloat().coerceAtLeast(1f)),
+                                onValueChange = { keyframeTimeMs = it.toLong() },
+                                valueRange = 0f..selectedClip.durationMs.toFloat().coerceAtLeast(1f)
+                            )
+                            Text("Value · ${"%.3f".format(keyframeValue)}", color = Grey, fontSize = 11.sp)
+                            Slider(value = keyframeValue.coerceIn(-100f, 100f), onValueChange = { keyframeValue = it }, valueRange = -100f..100f)
+                            Box {
+                                OutlinedButton(onClick = { easingMenu = true }) {
+                                    Text("Easing · ${keyframeEasing.name.replace('_', ' ').lowercase()}")
+                                    Icon(Icons.Default.ArrowDropDown, null)
+                                }
+                                DropdownMenu(expanded = easingMenu, onDismissRequest = { easingMenu = false }) {
+                                    KeyframeEasing.values().forEach { easing ->
+                                        DropdownMenuItem(
+                                            text = { Text(easing.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }) },
+                                            onClick = { keyframeEasing = easing; easingMenu = false }
+                                        )
+                                    }
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    onClick = {
+                                        onDocumentChange(document.setKeyframe(
+                                            selectedTrack.id, selectedClip.id,
+                                            AnimationKeyframe(keyframeProperty, keyframeTimeMs, keyframeValue, keyframeEasing)
+                                        ))
+                                    }
+                                ) { Icon(Icons.Default.Add, null); Text("Add / update") }
+                                OutlinedButton(
+                                    enabled = selectedClip.keyframes.any { it.property == keyframeProperty && it.timeMs == keyframeTimeMs },
+                                    onClick = {
+                                        onDocumentChange(document.removeKeyframe(selectedTrack.id, selectedClip.id, keyframeProperty, keyframeTimeMs))
+                                    }
+                                ) { Icon(Icons.Default.DeleteOutline, null); Text("Delete") }
+                            }
+                            if (matchingKeyframes.isNotEmpty()) {
+                                Text("Diamonds · tap to select a keyframe", color = Grey, fontSize = 10.sp)
+                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    matchingKeyframes.forEach { marker ->
+                                        FilterChip(
+                                            selected = marker.timeMs == keyframeTimeMs,
+                                            onClick = {
+                                                keyframeTimeMs = marker.timeMs
+                                                keyframeValue = marker.value
+                                                keyframeEasing = marker.easing
+                                            },
+                                            label = { Text("◆ ${marker.timeMs / 1000f}s", fontSize = 10.sp) }
+                                        )
+                                    }
+                                }
+                            }
+                            Text("Keyframes are saved in the project. Preview and export interpolation are not connected yet.", color = Grey, fontSize = 10.sp)
+                        }
+                    }
+                }
                 if (selectedTrack?.type == TimelineTrackType.TEXT && selectedClip != null) {
                     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAF7))) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
