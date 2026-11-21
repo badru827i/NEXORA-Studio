@@ -249,7 +249,7 @@ class MediaExportManager(private val context: Context) {
                     listOf(ToInt16PcmAudioProcessor(), GainProcessor(provider))
                 }
                 val videoEffects = if (isVideo) {
-                    buildVideoEffects(cropZoom, rotationDegrees, outputPreset).toMutableList().apply {
+                    buildKeyframedVideoEffects(clip, cropZoom, rotationDegrees, outputPreset, safeSpeed).toMutableList().apply {
                         buildTimelineTextOverlayEffect(
                             textClips = textClips,
                             videoClipStartMs = clip.startMs,
