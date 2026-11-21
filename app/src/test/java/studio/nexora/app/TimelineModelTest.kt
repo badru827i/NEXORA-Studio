@@ -67,11 +67,12 @@ class TimelineModelTest {
         )
         val restored = TimelineDocument.fromJson(document.toJson()).tracks.single().clips.single()
 
-        assertEquals(4, restored.keyframes.size)
+        assertEquals(5, restored.keyframes.size)
         assertEquals(0L, restored.keyframes.first { it.property == KeyframeProperty.POSITION_X }.timeMs)
         assertEquals(2_500L, restored.keyframes.first { it.property == KeyframeProperty.POSITION_X && it.value > 0.5f }.timeMs)
         assertEquals(KeyframeEasing.EASE_IN_OUT, restored.keyframes.first { it.property == KeyframeProperty.POSITION_X && it.value > 0.5f }.easing)
         assertEquals(5_000L, restored.keyframes.first { it.property == KeyframeProperty.ROTATION }.timeMs)
+        assertEquals(5_000L, restored.keyframes.first { it.property == KeyframeProperty.EXPOSURE }.timeMs)
         assertEquals(-20f, restored.keyframes.first { it.property == KeyframeProperty.HUE_BLUE }.value, 0.0001f)
     }
 
