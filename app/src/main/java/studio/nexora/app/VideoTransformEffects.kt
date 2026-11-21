@@ -128,7 +128,7 @@ fun buildKeyframedVideoEffects(
 
     val effects = buildVideoEffects(1f, 0, outputPreset).toMutableList()
     val safeSpeed = playbackSpeed.coerceIn(0.25f, 3f)
-    effects.add(MatrixTransformation { presentationTimeUs ->
+    effects.add(0, MatrixTransformation { presentationTimeUs ->
         val localTimeMs = (presentationTimeUs.coerceAtLeast(0L) / 1_000f * safeSpeed).toLong()
         val value = evaluateKeyframedTransform(clip, localTimeMs, cropZoom, rotationDegrees)
         Matrix().apply {
