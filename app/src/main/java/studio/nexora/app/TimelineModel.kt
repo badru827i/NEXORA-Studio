@@ -45,6 +45,36 @@ data class TimelineClip(
     val keyframes: List<AnimationKeyframe> = emptyList()
 ) {
     val endMs: Long get() = startMs + durationMs
+
+    /** Returns the interpolated value for a property at clip-local time. */
+    fun valueAt(property: KeyframeProperty, timeMs: Long, defaultValue: Float): Float {
+        val frames = keyframes.asSequence()
+            .filter { it.property == property && it.value.isFinite() }
+            .sortedBy { it.timeMs }
+            .toList()
+        if (frames.isEmpty()) return defaultValue
+
+        val time = timeMs.coerceIn(0L, durationMs)
+        if (time <= frames.first().timeMs) return frames.first().value
+        if (time >= frames.last().timeMs) return frames.last().value
+
+        val rightIndex = frames.indexOfFirst { it.timeMs >= time }
+        if (rightIndex <= 0) return frames.first().value
+        val left = frames[rightIndex - 1]
+        val right = frames[rightIndex]
+        if (time == right.timeMs) return right.value
+
+        val span = (right.timeMs - left.timeMs).coerceAtLeast(1L).toFloat()
+        val progress = ((time - left.timeMs).toFloat() / span).coerceIn(0f, 1f)
+        val eased = when (left.easing) {
+            KeyframeEasing.LINEAR -> progress
+            KeyframeEasing.EASE_IN -> progress * progress
+            KeyframeEasing.EASE_OUT -> 1f - (1f - progress) * (1f - progress)
+            KeyframeEasing.EASE_IN_OUT -> progress * progress * (3f - 2f * progress)
+            KeyframeEasing.HOLD -> 0f
+        }
+        return left.value + (right.value - left.value) * eased
+    }
 }
 
 data class TimelineTrack(
