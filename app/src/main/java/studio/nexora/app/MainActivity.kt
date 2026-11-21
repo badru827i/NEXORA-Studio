@@ -255,8 +255,18 @@ private fun EditorScreen(
     timeline: TimelineDocument, changeTimeline: (TimelineDocument) -> Unit
 ) {
     val context = LocalContext.current
-    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset) {
-        buildVideoEffects(cropZoom, rotationDegrees, outputPreset)
+    var selectedPreviewClip by remember { mutableStateOf<TimelineClip?>(null) }
+    val selectedPreviewVideoClip = selectedPreviewClip?.takeIf { clip ->
+        !clip.assetUri.startsWith("text://") &&
+            runCatching { context.contentResolver.getType(Uri.parse(clip.assetUri))?.startsWith("video/") == true }.getOrDefault(false)
+    }
+    val activePreviewUri = selectedPreviewVideoClip?.let { Uri.parse(it.assetUri) } ?: previewUri
+    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset, selectedPreviewVideoClip, speed) {
+        if (selectedPreviewVideoClip != null) {
+            buildKeyframedVideoEffects(selectedPreviewVideoClip!!, cropZoom, rotationDegrees, outputPreset, speed)
+        } else {
+            buildVideoEffects(cropZoom, rotationDegrees, outputPreset)
+        }
     }
     var audioVolume by remember { mutableFloatStateOf(1f) }
     var trackingMode by remember { mutableStateOf("Object") }
@@ -280,9 +290,16 @@ private fun EditorScreen(
                 Text("Import media, arrange clips, then export.", color = Grey, fontSize = 11.sp)
             }
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
-                if (previewUri != null) {
+                if (activePreviewUri != null) {
                     Box(Modifier.fillMaxSize()) {
-                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize(), videoEffects = activeVideoEffects, volume = audioVolume)
+                        MediaPreviewPlayer(
+                            uri = activePreviewUri,
+                            speed = speed,
+                            modifier = Modifier.fillMaxSize(),
+                            videoEffects = activeVideoEffects,
+                            volume = audioVolume,
+                            animationClip = selectedPreviewVideoClip
+                        )
                         if (tool == "Tracking") {
                             val regionSize = if (trackingMode == "Point") 0.10f else 0.18f
                             BoxWithConstraints(
@@ -323,7 +340,8 @@ private fun EditorScreen(
             TimelineEditorPanel(
                 document = timeline,
                 assets = assets,
-                onDocumentChange = changeTimeline
+                onDocumentChange = changeTimeline,
+                onSelectedClipChange = { selectedPreviewClip = it }
             )
         }
         item {
@@ -507,7 +525,8 @@ private fun EditorScreen(
 private fun TimelineEditorPanel(
     document: TimelineDocument,
     assets: List<Asset>,
-    onDocumentChange: (TimelineDocument) -> Unit
+    onDocumentChange: (TimelineDocument) -> Unit,
+    onSelectedClipChange: (TimelineClip?) -> Unit
 ) {
     var selectedTrackId by remember(document.tracks.firstOrNull()?.id) {
         mutableStateOf(document.tracks.firstOrNull()?.id.orEmpty())
@@ -520,6 +539,7 @@ private fun TimelineEditorPanel(
     val audioAsset = assets.firstOrNull { context.contentResolver.getType(it.uri)?.startsWith("audio/") == true }
     val selectedTrack = document.tracks.firstOrNull { it.id == selectedTrackId }
     val selectedClip = selectedTrack?.clips?.firstOrNull { it.id == selectedClipId }
+    LaunchedEffect(selectedClip) { onSelectedClipChange(selectedClip) }
     var subtitleImportMessage by remember { mutableStateOf("") }
     val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val track = document.tracks.firstOrNull { it.id == selectedTrackId && it.type == TimelineTrackType.TEXT }
@@ -691,7 +711,7 @@ private fun TimelineEditorPanel(
                                     }
                                 }
                             }
-                            Text("Keyframes are saved in the project. Preview and export interpolation are not connected yet.", color = Grey, fontSize = 10.sp)
+                            Text("Transform keyframes animate the selected video in preview and timeline export.", color = Grey, fontSize = 10.sp)
                         }
                     }
                 }
