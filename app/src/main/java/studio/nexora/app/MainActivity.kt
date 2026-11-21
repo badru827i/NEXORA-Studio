@@ -20,8 +20,6 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
-import androidx.compose.material.icons.automirrored.filled.Redo
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -281,7 +279,7 @@ private fun EditorScreen(
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Workspace", color = Grey, fontSize = 13.sp)
-                Row { Icon(Icons.AutoMirrored.Filled.Undo, null, tint = Grey); Spacer(Modifier.width(10.dp)); Icon(Icons.AutoMirrored.Filled.Redo, null, tint = Grey) }
+                Text("Import media, arrange clips, then export.", color = Grey, fontSize = 11.sp)
             }
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
                 if (previewUri != null) {
@@ -333,7 +331,7 @@ private fun EditorScreen(
         item {
             Text("Editing tools", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             val tools = listOf(
-                "Trim" to Icons.Default.ContentCut, "Split" to Icons.AutoMirrored.Filled.CallSplit,
+                "Trim" to Icons.Default.ContentCut,
                 "Crop" to Icons.Default.Crop, "Rotate" to Icons.Default.RotateRight, "Resize" to Icons.Default.AspectRatio, "Speed" to Icons.Default.Speed,
                 "Audio" to Icons.Default.GraphicEq, "Text" to Icons.Default.TextFields,
                 "Subtitles" to Icons.Default.Subtitles, "Adjust" to Icons.Default.Tune,
@@ -412,7 +410,7 @@ private fun EditorScreen(
                             Text("Tap the preview to place the target box. Lock it, then analyze the imported clip locally.", color = Grey, fontSize = 12.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf("Object", "Point", "Face", "Camera").forEach { mode ->
-                                    FilterChip(selected = trackingMode == mode, onClick = {
+                                    FilterChip(selected = trackingMode == mode, enabled = mode == "Object" || mode == "Point", onClick = {
                                         trackingMode = mode
                                         targetLocked = false
                                         trackingResult = null
@@ -493,13 +491,7 @@ private fun EditorScreen(
                                 fontSize = 11.sp
                             )
                         }
-                        else -> Text(when(tool) {
-                            "Crop" -> "Crop, resize and rotation controls will be added to the transform panel."
-                            "Audio" -> "Audio volume, fades and waveform controls will be added to the mixer."
-                            "Text" -> "Add a Text track in the timeline, then add or select a clip to edit its content, size, color and position."
-                            "Subtitles" -> "Select a Text track to add timed subtitles manually or import an SRT file."
-                            else -> "Color, exposure and look controls are planned."
-                        }, color = Grey, fontSize = 12.sp)
+                        else -> Text("Choose a clip or add a track in the timeline to continue.", color = Grey, fontSize = 12.sp)
                     }
                 }
             }
