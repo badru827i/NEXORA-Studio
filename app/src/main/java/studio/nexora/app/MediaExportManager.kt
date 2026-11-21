@@ -236,7 +236,7 @@ class MediaExportManager(private val context: Context) {
                     val outputDurationUs = ((clip.durationMs.toDouble() / (if (isVideo) safeSpeed else 1f)) * 1_000.0).toLong()
                     val safeFadeInUs = fadeInMs.coerceAtLeast(0L).times(1_000L).coerceAtMost(outputDurationUs)
                     val safeFadeOutUs = fadeOutMs.coerceAtLeast(0L).times(1_000L).coerceAtMost(outputDurationUs)
-                    val provider = DefaultGainProvider.Builder(clipGain).apply {
+                    val fadeProvider = DefaultGainProvider.Builder(clipGain).apply {
                         if (safeFadeInUs > 0L) addFadeAt(0L, safeFadeInUs, DefaultGainProvider.FADE_IN_LINEAR)
                         if (safeFadeOutUs > 0L) {
                             addFadeAt(
@@ -246,6 +246,21 @@ class MediaExportManager(private val context: Context) {
                             )
                         }
                     }.build()
+                    val hasVolumeKeyframes = clip.keyframes.any { it.property == KeyframeProperty.VOLUME }
+                    val provider = object : GainProcessor.GainProvider {
+                        override fun getGainFactorAtSamplePosition(samplePosition: Long, sampleRate: Int): Float {
+                            val fadeGain = fadeProvider.getGainFactorAtSamplePosition(samplePosition, sampleRate)
+                            val outputTimeMs = samplePosition * 1_000L / sampleRate.coerceAtLeast(1)
+                            val sourceTimeMs = (outputTimeMs * if (isVideo) safeSpeed else 1f).toLong()
+                            val animatedVolume = clip.valueAt(KeyframeProperty.VOLUME, sourceTimeMs, 1f)
+                                .coerceIn(0f, 1f)
+                            return (fadeGain * animatedVolume).coerceIn(0f, 1f)
+                        }
+
+                        override fun isUnityUntil(samplePosition: Long, sampleRate: Int): Long =
+                            if (hasVolumeKeyframes) C.TIME_UNSET
+                            else fadeProvider.isUnityUntil(samplePosition, sampleRate)
+                    }
                     listOf(ToInt16PcmAudioProcessor(), GainProcessor(provider))
                 }
                 val videoEffects = if (isVideo) {
