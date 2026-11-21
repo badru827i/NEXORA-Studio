@@ -77,6 +77,35 @@ class TimelineModelTest {
     }
 
     @Test
+    fun keyframeValuesInterpolateWithAllEasingModesAndClipLocalBounds() {
+        val clip = TimelineClip(
+            id = "animated", assetUri = "video", label = "Shot",
+            startMs = 0L, durationMs = 1_000L,
+            keyframes = listOf(
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 100L, 0f),
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 900L, 10f),
+                AnimationKeyframe(KeyframeProperty.POSITION_Y, 100L, 0f, KeyframeEasing.EASE_IN),
+                AnimationKeyframe(KeyframeProperty.POSITION_Y, 900L, 10f),
+                AnimationKeyframe(KeyframeProperty.SCALE_X, 100L, 0f, KeyframeEasing.EASE_OUT),
+                AnimationKeyframe(KeyframeProperty.SCALE_X, 900L, 10f),
+                AnimationKeyframe(KeyframeProperty.SCALE_Y, 100L, 0f, KeyframeEasing.EASE_IN_OUT),
+                AnimationKeyframe(KeyframeProperty.SCALE_Y, 900L, 10f),
+                AnimationKeyframe(KeyframeProperty.ROTATION, 100L, 0f, KeyframeEasing.HOLD),
+                AnimationKeyframe(KeyframeProperty.ROTATION, 900L, 10f)
+            )
+        )
+
+        assertEquals(5f, clip.valueAt(KeyframeProperty.POSITION_X, 500L, -1f), 0.0001f)
+        assertEquals(2.5f, clip.valueAt(KeyframeProperty.POSITION_Y, 500L, -1f), 0.0001f)
+        assertEquals(7.5f, clip.valueAt(KeyframeProperty.SCALE_X, 500L, -1f), 0.0001f)
+        assertEquals(5f, clip.valueAt(KeyframeProperty.SCALE_Y, 500L, -1f), 0.0001f)
+        assertEquals(0f, clip.valueAt(KeyframeProperty.ROTATION, 500L, -1f), 0.0001f)
+        assertEquals(0f, clip.valueAt(KeyframeProperty.POSITION_X, 0L, -1f), 0.0001f)
+        assertEquals(10f, clip.valueAt(KeyframeProperty.POSITION_X, 1_000L, -1f), 0.0001f)
+        assertEquals(-1f, clip.valueAt(KeyframeProperty.OPACITY, 500L, -1f), 0.0001f)
+    }
+
+    @Test
     fun keyframeEditingReplacesSameTimeMovesAndRemovesSafely() {
         val clip = TimelineClip(id = "clip", assetUri = "video", label = "Shot", startMs = 0L, durationMs = 4_000L)
         val document = TimelineDocument(listOf(
