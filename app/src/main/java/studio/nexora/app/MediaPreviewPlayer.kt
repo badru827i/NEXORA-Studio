@@ -17,7 +17,14 @@ import androidx.media3.ui.PlayerView
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
-fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, videoEffects: List<Effect> = emptyList(), volume: Float = 1f) {
+fun MediaPreviewPlayer(
+    uri: Uri,
+    speed: Float,
+    modifier: Modifier = Modifier,
+    videoEffects: List<Effect> = emptyList(),
+    volume: Float = 1f,
+    animationClip: TimelineClip? = null
+) {
     val context = LocalContext.current
     val player = remember { ExoPlayer.Builder(context).build().apply { setVideoEffects(videoEffects) } }
 
@@ -25,9 +32,18 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, vi
         onDispose { player.release() }
     }
 
-    LaunchedEffect(uri) {
+    LaunchedEffect(uri, animationClip?.id, animationClip?.sourceInMs, animationClip?.durationMs) {
         player.stop()
-        player.setMediaItem(MediaItem.fromUri(uri))
+        val builder = MediaItem.Builder().setUri(uri)
+        if (animationClip != null) {
+            builder.setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(animationClip.sourceInMs)
+                    .setEndPositionMs(animationClip.sourceInMs + animationClip.durationMs)
+                    .build()
+            )
+        }
+        player.setMediaItem(builder.build())
         player.prepare()
     }
 
