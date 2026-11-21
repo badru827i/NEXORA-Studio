@@ -39,12 +39,13 @@ class TimelineModelTest {
     fun timelineRoundTripsThroughJson() {
         val clip = TimelineClip(id = "clip", assetUri = "content://asset", label = "Music", startMs = 200L, durationMs = 5_000L, volume = 0.65f, muted = true)
         val original = TimelineDocument(
-            listOf(TimelineTrack(id = "music", name = "Audio 1", type = TimelineTrackType.AUDIO, clips = listOf(clip), muted = false))
+            listOf(TimelineTrack(id = "music", name = "Audio 1", type = TimelineTrackType.AUDIO, clips = listOf(clip), muted = true))
         )
 
         val restored = TimelineDocument.fromJson(original.toJson())
         assertEquals(original, restored)
         assertTrue(restored.tracks.single().clips.single().muted)
+        assertTrue(restored.tracks.single().muted)
         assertFalse(restored.tracks.single().locked)
     }
 
