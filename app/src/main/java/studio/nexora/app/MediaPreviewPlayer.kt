@@ -14,6 +14,7 @@ import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
@@ -51,8 +52,16 @@ fun MediaPreviewPlayer(
         player.setPlaybackSpeed(speed.coerceIn(0.25f, 3f))
     }
 
-    LaunchedEffect(volume) {
-        player.volume = volume.coerceIn(0f, 1f)
+    LaunchedEffect(volume, animationClip, speed) {
+        while (true) {
+            val animatedVolume = animationClip?.valueAt(
+                KeyframeProperty.VOLUME,
+                (player.currentPosition * speed.coerceIn(0.25f, 3f)).toLong(),
+                1f
+            ) ?: 1f
+            player.volume = (volume * animatedVolume.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+            delay(if (player.isPlaying) 33L else 120L)
+        }
     }
 
     LaunchedEffect(videoEffects) {
