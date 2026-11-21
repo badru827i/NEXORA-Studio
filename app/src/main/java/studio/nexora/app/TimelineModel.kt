@@ -41,7 +41,8 @@ data class TimelineClip(
     val textBackgroundColor: Int = 0x99000000.toInt(),
     val textSizeScale: Float = 0.06f,
     val textPosition: String = "BOTTOM",
-    val textBold: Boolean = true
+    val textBold: Boolean = true,
+    val keyframes: List<AnimationKeyframe> = emptyList()
 ) {
     val endMs: Long get() = startMs + durationMs
 }
@@ -184,6 +185,32 @@ data class TimelineDocument(
         }
     )
 
+    fun setKeyframe(trackId: String, clipId: String, keyframe: AnimationKeyframe): TimelineDocument = copy(
+        tracks = tracks.map { track ->
+            if (track.id != trackId || track.locked) track else track.copy(clips = track.clips.map { clip ->
+                if (clip.id != clipId) clip else {
+                    val safe = keyframe.copy(
+                        timeMs = keyframe.timeMs.coerceIn(0L, clip.durationMs),
+                        value = keyframe.value.takeIf { it.isFinite() } ?: 0f
+                    )
+                    clip.copy(keyframes = (clip.keyframes.filterNot {
+                        it.property == safe.property && it.timeMs == safe.timeMs
+                    } + safe).sortedWith(compareBy<AnimationKeyframe> { it.property.name }.thenBy { it.timeMs }))
+                }
+            })
+        }
+    )
+
+    fun removeKeyframe(trackId: String, clipId: String, property: KeyframeProperty, timeMs: Long): TimelineDocument = copy(
+        tracks = tracks.map { track ->
+            if (track.id != trackId || track.locked) track else track.copy(clips = track.clips.map { clip ->
+                if (clip.id != clipId) clip else clip.copy(keyframes = clip.keyframes.filterNot {
+                    it.property == property && it.timeMs == timeMs
+                })
+            })
+        }
+    )
+
     fun splitClip(trackId: String, clipId: String, splitAtMs: Long): TimelineDocument {
         val track = tracks.firstOrNull { it.id == trackId && !it.locked } ?: return this
         val clip = track.clips.firstOrNull { it.id == clipId } ?: return this
@@ -255,6 +282,18 @@ data class TimelineDocument(
                     val clip = clipsJson.optJSONObject(clipIndex) ?: return@mapNotNull null
                     val duration = clip.optLong("durationMs", 0L)
                     if (duration <= 0L) return@mapNotNull null
+                    val keyframesJson = clip.optJSONArray("keyframes") ?: JSONArray()
+                    val keyframes = (0 until keyframesJson.length()).mapNotNull { keyIndex ->
+                        val item = keyframesJson.optJSONObject(keyIndex) ?: return@mapNotNull null
+                        val property = runCatching { KeyframeProperty.valueOf(item.optString("property")) }.getOrNull()
+                            ?: return@mapNotNull null
+                        val easing = runCatching { KeyframeEasing.valueOf(item.optString("easing", "LINEAR")) }
+                            .getOrDefault(KeyframeEasing.LINEAR)
+                        val value = item.optDouble("value", Double.NaN).toFloat()
+                        if (!value.isFinite()) return@mapNotNull null
+                        AnimationKeyframe(property, item.optLong("timeMs", 0L).coerceIn(0L, duration), value, easing)
+                    }.distinctBy { it.property to it.timeMs }
+                        .sortedWith(compareBy<AnimationKeyframe> { it.property.name }.thenBy { it.timeMs })
                     TimelineClip(
                         id = clip.optString("id").ifBlank { UUID.randomUUID().toString() },
                         assetUri = clip.optString("assetUri"),
@@ -269,7 +308,8 @@ data class TimelineDocument(
                         textBackgroundColor = clip.optInt("textBackgroundColor", 0x99000000.toInt()),
                         textSizeScale = clip.optDouble("textSizeScale", 0.06).toFloat().coerceIn(0.025f, 0.12f),
                         textPosition = clip.optString("textPosition", "BOTTOM").takeIf { it in listOf("TOP", "CENTER", "BOTTOM") } ?: "BOTTOM",
-                        textBold = clip.optBoolean("textBold", true)
+                        textBold = clip.optBoolean("textBold", true),
+                        keyframes = keyframes
                     )
                 }
                 TimelineTrack(
