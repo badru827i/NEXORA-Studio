@@ -39,6 +39,26 @@ fun outputShortSide(preset: String): Int? = when (preset) {
     else -> null
 }
 
+fun keyframeValueRange(property: KeyframeProperty): ClosedFloatingPointRange<Float> = when (property) {
+    KeyframeProperty.POSITION_X, KeyframeProperty.POSITION_Y -> -1f..1f
+    KeyframeProperty.SCALE_X, KeyframeProperty.SCALE_Y -> 0.1f..5f
+    KeyframeProperty.ROTATION -> -360f..360f
+    KeyframeProperty.OPACITY, KeyframeProperty.VOLUME -> 0f..1f
+    KeyframeProperty.CROP_ZOOM -> 1f..2.5f
+    KeyframeProperty.EXPOSURE -> -4f..4f
+    KeyframeProperty.CONTRAST, KeyframeProperty.SATURATION -> 0f..2f
+    KeyframeProperty.TEMPERATURE, KeyframeProperty.TINT -> -100f..100f
+    else -> if (property.name.startsWith("HUE_")) -180f..180f else -100f..100f
+}
+
+fun defaultKeyframeValue(property: KeyframeProperty): Float = when (property) {
+    KeyframeProperty.SCALE_X, KeyframeProperty.SCALE_Y,
+    KeyframeProperty.CROP_ZOOM, KeyframeProperty.CONTRAST,
+    KeyframeProperty.SATURATION, KeyframeProperty.OPACITY,
+    KeyframeProperty.VOLUME -> 1f
+    else -> 0f
+}
+
 fun evaluateKeyframedTransform(
     clip: TimelineClip,
     timeMs: Long,
