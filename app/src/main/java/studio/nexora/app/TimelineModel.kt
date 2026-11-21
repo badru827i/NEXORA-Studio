@@ -6,6 +6,27 @@ import java.util.UUID
 
 enum class TimelineTrackType { VIDEO, AUDIO, TEXT }
 
+/** Animated parameter that can be changed over a clip's local timeline. */
+enum class KeyframeProperty {
+    POSITION_X, POSITION_Y, SCALE_X, SCALE_Y, ROTATION, OPACITY,
+    CROP_ZOOM, VOLUME,
+    EXPOSURE, CONTRAST, SATURATION, TEMPERATURE, TINT,
+    HUE_RED, HUE_ORANGE, HUE_YELLOW, HUE_GREEN, HUE_CYAN, HUE_BLUE, HUE_PURPLE, HUE_MAGENTA,
+    HSL_SATURATION_RED, HSL_SATURATION_ORANGE, HSL_SATURATION_YELLOW, HSL_SATURATION_GREEN,
+    HSL_SATURATION_CYAN, HSL_SATURATION_BLUE, HSL_SATURATION_PURPLE, HSL_SATURATION_MAGENTA,
+    HSL_LUMINANCE_RED, HSL_LUMINANCE_ORANGE, HSL_LUMINANCE_YELLOW, HSL_LUMINANCE_GREEN,
+    HSL_LUMINANCE_CYAN, HSL_LUMINANCE_BLUE, HSL_LUMINANCE_PURPLE, HSL_LUMINANCE_MAGENTA
+}
+
+enum class KeyframeEasing { LINEAR, EASE_IN, EASE_OUT, EASE_IN_OUT, HOLD }
+
+data class AnimationKeyframe(
+    val property: KeyframeProperty,
+    val timeMs: Long,
+    val value: Float,
+    val easing: KeyframeEasing = KeyframeEasing.LINEAR
+)
+
 data class TimelineClip(
     val id: String = UUID.randomUUID().toString(),
     val assetUri: String,
@@ -207,7 +228,16 @@ data class TimelineDocument(
                             .put("textBackgroundColor", clip.textBackgroundColor)
                             .put("textSizeScale", clip.textSizeScale.coerceIn(0.025f, 0.12f).toDouble())
                             .put("textPosition", clip.textPosition)
-                            .put("textBold", clip.textBold))
+                            .put("textBold", clip.textBold)
+                            .put("keyframes", JSONArray().apply {
+                                clip.keyframes.forEach { keyframe ->
+                                    put(JSONObject()
+                                        .put("property", keyframe.property.name)
+                                        .put("timeMs", keyframe.timeMs.coerceIn(0L, clip.durationMs))
+                                        .put("value", keyframe.value.toDouble())
+                                        .put("easing", keyframe.easing.name))
+                                }
+                            }))
                     }
                 }))
         }
