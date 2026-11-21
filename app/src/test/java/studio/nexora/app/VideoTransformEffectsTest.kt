@@ -38,6 +38,49 @@ class VideoTransformEffectsTest {
     }
 
     @Test
+    fun keyframedTransformEvaluatesPositionScaleRotationAndZoom() {
+        val clip = TimelineClip(
+            id = "clip", assetUri = "video", label = "Shot", startMs = 0L, durationMs = 1_000L,
+            keyframes = listOf(
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 0L, -0.5f),
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 1_000L, 0.5f),
+                AnimationKeyframe(KeyframeProperty.SCALE_X, 0L, 1f),
+                AnimationKeyframe(KeyframeProperty.SCALE_X, 1_000L, 3f),
+                AnimationKeyframe(KeyframeProperty.ROTATION, 0L, 0f),
+                AnimationKeyframe(KeyframeProperty.ROTATION, 1_000L, 180f),
+                AnimationKeyframe(KeyframeProperty.CROP_ZOOM, 0L, 1f),
+                AnimationKeyframe(KeyframeProperty.CROP_ZOOM, 1_000L, 2f)
+            )
+        )
+        val value = evaluateKeyframedTransform(clip, 500L)
+        assertEquals(0f, value.positionX, 0.0001f)
+        assertEquals(2f, value.scaleX, 0.0001f)
+        assertEquals(90f, value.rotationDegrees, 0.0001f)
+        assertEquals(1.5f, value.cropZoom, 0.0001f)
+    }
+
+    @Test
+    fun keyframedTransformUsesBaseValuesAndClampsUnsafeValues() {
+        val clip = TimelineClip(
+            id = "clip", assetUri = "video", label = "Shot", startMs = 0L, durationMs = 1_000L
+        )
+        val value = evaluateKeyframedTransform(clip, 500L, baseCropZoom = 1.8f, baseRotationDegrees = 90)
+        assertEquals(1.8f, value.cropZoom, 0.0001f)
+        assertEquals(90f, value.rotationDegrees, 0.0001f)
+        assertEquals(1f, value.scaleX, 0.0001f)
+        assertEquals(0f, value.positionY, 0.0001f)
+    }
+
+    @Test
+    fun keyframeControlsUsePropertySpecificRangesAndDefaults() {
+        assertEquals(0f..1f, keyframeValueRange(KeyframeProperty.OPACITY))
+        assertEquals(-360f..360f, keyframeValueRange(KeyframeProperty.ROTATION))
+        assertEquals(1f, defaultKeyframeValue(KeyframeProperty.SCALE_X), 0.0001f)
+        assertEquals(1f, defaultKeyframeValue(KeyframeProperty.VOLUME), 0.0001f)
+        assertEquals(0f, defaultKeyframeValue(KeyframeProperty.POSITION_X), 0.0001f)
+    }
+
+    @Test
     fun outputPresetsMapToShortSideSizes() {
         assertEquals(480, outputShortSide("480p"))
         assertEquals(720, outputShortSide("720p"))

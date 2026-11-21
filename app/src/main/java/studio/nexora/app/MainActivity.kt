@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,8 +20,6 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
-import androidx.compose.material.icons.automirrored.filled.Redo
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -52,7 +51,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 private data class Asset(val uri: Uri, val name: String)
-private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices"), ThreeD("3D") }
+private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -73,6 +72,10 @@ private fun NexoraApp() {
     var cropZoom by remember { mutableFloatStateOf(1f) }
     var rotationDegrees by remember { mutableIntStateOf(0) }
     var outputPreset by remember { mutableStateOf("Original") }
+    var timeline by remember { mutableStateOf(TimelineDocument()) }
+    var exportAudioGain by remember { mutableFloatStateOf(1f) }
+    var exportFadeInMs by remember { mutableLongStateOf(0L) }
+    var exportFadeOutMs by remember { mutableLongStateOf(0L) }
     var exportDialog by remember { mutableStateOf(false) }
     var exportRunning by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf("Choose a video and start export.") }
@@ -111,7 +114,6 @@ private fun NexoraApp() {
                             Screen.Media -> Icons.Default.Image
                             Screen.Projects -> Icons.Default.Folder
                             Screen.Devices -> Icons.Default.Devices
-                            Screen.ThreeD -> Icons.Default.ViewInAr
                         }
                         NavigationBarItem(selected = screen == item, onClick = { screen = item }, icon = { Icon(icon, item.label) }, label = { Text(item.label, fontSize = 10.sp) })
                     }
@@ -124,7 +126,7 @@ private fun NexoraApp() {
                     trimIn, { trimIn = safeTrimStart(it, trimOut) }, trimOut, { trimOut = safeTrimEnd(it, trimIn) },
                     splitCount, { splitCount++ }, { picker.launch(arrayOf("video/*", "image/*", "audio/*")) },
                     cropZoom, { cropZoom = safeCropZoom(it) }, rotationDegrees, { rotationDegrees = safeRotationDegrees(it) },
-                    outputPreset, { outputPreset = safeOutputPreset(it) }
+                    outputPreset, { outputPreset = safeOutputPreset(it) }, timeline, { timeline = it }
                 )
                 Screen.Media -> MediaScreen(Modifier.padding(padding), assets) { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
                 Screen.Projects -> ProjectsScreen(
@@ -134,6 +136,10 @@ private fun NexoraApp() {
                             put("tool", tool); put("speed", speed.toDouble())
                             put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble()); put("splitCount", splitCount)
                             put("cropZoom", cropZoom.toDouble()); put("rotationDegrees", rotationDegrees); put("outputPreset", outputPreset)
+                            put("timeline", timeline.toJson())
+                            put("exportAudioGain", exportAudioGain.toDouble())
+                            put("exportFadeInMs", exportFadeInMs)
+                            put("exportFadeOutMs", exportFadeOutMs)
                             put("assets", org.json.JSONArray().apply {
                                 assets.forEach { asset ->
                                     put(org.json.JSONObject().put("uri", asset.uri.toString()).put("name", asset.name))
@@ -162,6 +168,10 @@ private fun NexoraApp() {
                             cropZoom = safeCropZoom(doc.optDouble("cropZoom", 1.0).toFloat())
                             rotationDegrees = safeRotationDegrees(doc.optInt("rotationDegrees", 0))
                             outputPreset = safeOutputPreset(doc.optString("outputPreset", "Original"))
+                            timeline = TimelineDocument.fromJson(doc.optString("timeline", ""))
+                            exportAudioGain = doc.optDouble("exportAudioGain", 1.0).toFloat().coerceIn(0f, 1f)
+                            exportFadeInMs = doc.optLong("exportFadeInMs", 0L).coerceIn(0L, 5_000L)
+                            exportFadeOutMs = doc.optLong("exportFadeOutMs", 0L).coerceIn(0L, 5_000L)
                         }
                         screen = Screen.Editor
                     },
@@ -173,11 +183,11 @@ private fun NexoraApp() {
                     onNew = {
                         activeProjectId = null
                         project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
-                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"; screen = Screen.Editor
+                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"
+                        timeline = TimelineDocument(); exportAudioGain = 1f; exportFadeInMs = 0L; exportFadeOutMs = 0L; screen = Screen.Editor
                     }
                 )
                 Screen.Devices -> DevicesScreen(Modifier.padding(padding))
-                Screen.ThreeD -> ThreeDPage(Modifier.padding(padding))
             }
         }
     }
@@ -187,6 +197,12 @@ private fun NexoraApp() {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (videoAsset == null) "Import a video first. Image and audio files cannot be exported with this single-clip video workflow." else "MP4 · H.264 video · AAC audio · 30 fps")
+                Text("Export volume · ${(exportAudioGain * 100).toInt()}%", color = Green, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                Slider(value = exportAudioGain, onValueChange = { exportAudioGain = it.coerceIn(0f, 1f) }, valueRange = 0f..1f)
+                Text("Fade in · ${exportFadeInMs / 1000f}s", color = Grey, fontSize = 11.sp)
+                Slider(value = exportFadeInMs / 1000f, onValueChange = { exportFadeInMs = (it * 1000f).toLong() }, valueRange = 0f..5f)
+                Text("Fade out · ${exportFadeOutMs / 1000f}s", color = Grey, fontSize = 11.sp)
+                Slider(value = exportFadeOutMs / 1000f, onValueChange = { exportFadeOutMs = (it * 1000f).toLong() }, valueRange = 0f..5f)
                 Text(exportMessage, color = Grey, fontSize = 12.sp)
             }
         },
@@ -198,7 +214,7 @@ private fun NexoraApp() {
                     if (selected != null) {
                         exportRunning = true
                         exportMessage = "Preparing video..."
-                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, object : MediaExportManager.Callback {
+                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, exportAudioGain, exportFadeInMs, exportFadeOutMs, timeline, object : MediaExportManager.Callback {
                             override fun onComplete(outputFile: java.io.File, publicUri: Uri?) {
                                 exportRunning = false
                                 exportMessage = if (publicUri != null) {
@@ -235,11 +251,22 @@ private fun EditorScreen(
     speed: Float, changeSpeed: (Float) -> Unit, trimIn: Float, changeIn: (Float) -> Unit,
     trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit,
     cropZoom: Float, changeCropZoom: (Float) -> Unit, rotationDegrees: Int, changeRotationDegrees: (Int) -> Unit,
-    outputPreset: String, changeOutputPreset: (String) -> Unit
+    outputPreset: String, changeOutputPreset: (String) -> Unit,
+    timeline: TimelineDocument, changeTimeline: (TimelineDocument) -> Unit
 ) {
     val context = LocalContext.current
-    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset) {
-        buildVideoEffects(cropZoom, rotationDegrees, outputPreset)
+    var selectedPreviewClip by remember { mutableStateOf<TimelineClip?>(null) }
+    val selectedPreviewVideoClip = selectedPreviewClip?.takeIf { clip ->
+        !clip.assetUri.startsWith("text://") &&
+            runCatching { context.contentResolver.getType(Uri.parse(clip.assetUri))?.startsWith("video/") == true }.getOrDefault(false)
+    }
+    val activePreviewUri = selectedPreviewVideoClip?.let { Uri.parse(it.assetUri) } ?: previewUri
+    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset, selectedPreviewVideoClip, speed) {
+        if (selectedPreviewVideoClip != null) {
+            buildKeyframedVideoEffects(selectedPreviewVideoClip!!, cropZoom, rotationDegrees, outputPreset, speed)
+        } else {
+            buildVideoEffects(cropZoom, rotationDegrees, outputPreset)
+        }
     }
     var audioVolume by remember { mutableFloatStateOf(1f) }
     var trackingMode by remember { mutableStateOf("Object") }
@@ -260,12 +287,19 @@ private fun EditorScreen(
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Workspace", color = Grey, fontSize = 13.sp)
-                Row { Icon(Icons.AutoMirrored.Filled.Undo, null, tint = Grey); Spacer(Modifier.width(10.dp)); Icon(Icons.AutoMirrored.Filled.Redo, null, tint = Grey) }
+                Text("Import media, arrange clips, then export.", color = Grey, fontSize = 11.sp)
             }
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
-                if (previewUri != null) {
+                if (activePreviewUri != null) {
                     Box(Modifier.fillMaxSize()) {
-                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize(), videoEffects = activeVideoEffects, volume = audioVolume)
+                        MediaPreviewPlayer(
+                            uri = activePreviewUri,
+                            speed = speed,
+                            modifier = Modifier.fillMaxSize(),
+                            videoEffects = activeVideoEffects,
+                            volume = audioVolume,
+                            animationClip = selectedPreviewVideoClip
+                        )
                         if (tool == "Tracking") {
                             val regionSize = if (trackingMode == "Point") 0.10f else 0.18f
                             BoxWithConstraints(
@@ -303,53 +337,17 @@ private fun EditorScreen(
             }
         }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Timeline", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Text("00:00 / 00:15", color = Grey, fontSize = 12.sp)
-            }
-            Card(colors = CardDefaults.cardColors(containerColor = Paper), shape = RoundedCornerShape(15.dp)) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf("00:00","00:05","00:10","00:15").forEach { Text(it, color = Grey, fontSize = 10.sp) }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.VideoFile, null, tint = Green)
-                        Spacer(Modifier.width(8.dp))
-                        Row(Modifier.weight(1f).height(40.dp).background(SoftGreen, RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFD5E3D9), RoundedCornerShape(8.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            repeat(8) { Box(Modifier.weight(1f).fillMaxHeight().background(if (it % 2 == 0) Color(0xFFD1E0D5) else Color(0xFFE2EBE4), RoundedCornerShape(4.dp))) }
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.MusicNote, null, tint = Grey)
-                        Spacer(Modifier.width(8.dp))
-                        Box(Modifier.weight(1f).height(22.dp).background(Color(0xFFF0F1EF), RoundedCornerShape(7.dp))) {
-                            Box(Modifier.fillMaxWidth(0.65f).fillMaxHeight().background(Color(0xFFE1E7E1), RoundedCornerShape(7.dp)))
-                        }
-                    }
-                    trackingResult?.let { result ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.GpsFixed, null, tint = Green)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Motion track · ${result.points.size} keyframes", color = Green, fontSize = 11.sp)
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().height(22.dp).background(SoftGreen, RoundedCornerShape(7.dp)).padding(horizontal = 5.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            result.points.take(80).forEach {
-                                Box(Modifier.size(5.dp).background(Green, CircleShape))
-                            }
-                        }
-                    }
-                    Text(if (assets.isEmpty()) "No clip yet · import media to populate timeline" else "Clip 1 · " + (splitCount + 1) + " segment(s)", color = Grey, fontSize = 11.sp)
-                }
-            }
+            TimelineEditorPanel(
+                document = timeline,
+                assets = assets,
+                onDocumentChange = changeTimeline,
+                onSelectedClipChange = { selectedPreviewClip = it }
+            )
         }
         item {
             Text("Editing tools", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             val tools = listOf(
-                "Trim" to Icons.Default.ContentCut, "Split" to Icons.AutoMirrored.Filled.CallSplit,
+                "Trim" to Icons.Default.ContentCut,
                 "Crop" to Icons.Default.Crop, "Rotate" to Icons.Default.RotateRight, "Resize" to Icons.Default.AspectRatio, "Speed" to Icons.Default.Speed,
                 "Audio" to Icons.Default.GraphicEq, "Text" to Icons.Default.TextFields,
                 "Subtitles" to Icons.Default.Subtitles, "Adjust" to Icons.Default.Tune,
@@ -420,7 +418,7 @@ private fun EditorScreen(
                                     Text("Reset")
                                 }
                             }
-                            Text("This control changes preview playback only. Track mixing, fades and final-export gain are the next audio-engine stage.", color = Grey, fontSize = 11.sp)
+                            Text("Preview volume affects playback only. Clip and track mixing, mute and export fades are available in the timeline and export controls.", color = Grey, fontSize = 11.sp)
                         }
                         "Tracking" -> {
                             val supportedMode = trackingMode == "Object" || trackingMode == "Point"
@@ -428,7 +426,7 @@ private fun EditorScreen(
                             Text("Tap the preview to place the target box. Lock it, then analyze the imported clip locally.", color = Grey, fontSize = 12.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf("Object", "Point", "Face", "Camera").forEach { mode ->
-                                    FilterChip(selected = trackingMode == mode, onClick = {
+                                    FilterChip(selected = trackingMode == mode, enabled = mode == "Object" || mode == "Point", onClick = {
                                         trackingMode = mode
                                         targetLocked = false
                                         trackingResult = null
@@ -509,13 +507,7 @@ private fun EditorScreen(
                                 fontSize = 11.sp
                             )
                         }
-                        else -> Text(when(tool) {
-                            "Crop" -> "Crop, resize and rotation controls will be added to the transform panel."
-                            "Audio" -> "Audio volume, fades and waveform controls will be added to the mixer."
-                            "Text" -> "Text overlays and title templates are planned."
-                            "Subtitles" -> "Subtitle tracks and timing tools are planned."
-                            else -> "Color, exposure and look controls are planned."
-                        }, color = Grey, fontSize = 12.sp)
+                        else -> Text("Choose a clip or add a track in the timeline to continue.", color = Grey, fontSize = 12.sp)
                     }
                 }
             }
@@ -524,6 +516,514 @@ private fun EditorScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onImport, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Add, null); Text("Add media") }
                 Button(onClick = { selectTool("Trim") }, modifier = Modifier.weight(1f)) { Text("Edit clip") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineEditorPanel(
+    document: TimelineDocument,
+    assets: List<Asset>,
+    onDocumentChange: (TimelineDocument) -> Unit,
+    onSelectedClipChange: (TimelineClip?) -> Unit
+) {
+    var selectedTrackId by remember(document.tracks.firstOrNull()?.id) {
+        mutableStateOf(document.tracks.firstOrNull()?.id.orEmpty())
+    }
+    var selectedClipId by remember { mutableStateOf<String?>(null) }
+    var pixelsPerSecond by remember { mutableFloatStateOf(120f) }
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val context = LocalContext.current
+    val videoAsset = assets.firstOrNull { context.contentResolver.getType(it.uri)?.startsWith("video/") == true }
+    val audioAsset = assets.firstOrNull { context.contentResolver.getType(it.uri)?.startsWith("audio/") == true }
+    val selectedTrack = document.tracks.firstOrNull { it.id == selectedTrackId }
+    val selectedClip = selectedTrack?.clips?.firstOrNull { it.id == selectedClipId }
+    LaunchedEffect(selectedClip) { onSelectedClipChange(selectedClip) }
+    var subtitleImportMessage by remember { mutableStateOf("") }
+    val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val track = document.tracks.firstOrNull { it.id == selectedTrackId && it.type == TimelineTrackType.TEXT }
+        if (uri != null && track != null) {
+            val imported = runCatching {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { parseSrt(it.readText()) }
+                    ?: emptyList()
+            }
+            imported.onSuccess { cues ->
+                if (cues.isEmpty()) {
+                    subtitleImportMessage = "No valid SRT subtitle cues found."
+                } else {
+                    onDocumentChange(document.addSubtitleCues(track.id, cues))
+                    subtitleImportMessage = "Imported " + cues.size + " subtitle cues."
+                }
+            }.onFailure { subtitleImportMessage = "Could not read this subtitle file." }
+        }
+    }
+
+    fun updateSelectedClip(transform: (TimelineClip) -> TimelineClip) {
+        val track = selectedTrack ?: return
+        val clip = selectedClip ?: return
+        onDocumentChange(document.copy(tracks = document.tracks.map { current ->
+            if (current.id != track.id) current else current.copy(
+                clips = current.clips.map { item -> if (item.id == clip.id) transform(item) else item }
+            )
+        }))
+    }
+
+    fun updateSelectedTextClip(transform: (TimelineClip) -> TimelineClip) =
+        updateSelectedClip(transform)
+
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Timeline", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text("Duration ${document.durationMs / 1000}s", color = Grey, fontSize = 12.sp)
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = Paper), shape = RoundedCornerShape(15.dp)) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Zoom", color = Grey, fontSize = 11.sp)
+                    Slider(value = pixelsPerSecond, onValueChange = { pixelsPerSecond = it }, valueRange = 60f..220f, modifier = Modifier.weight(1f))
+                    Text("${pixelsPerSecond.toInt()} px/s", color = Grey, fontSize = 10.sp)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TimelineTrackType.values().forEach { type ->
+                        OutlinedButton(
+                            onClick = {
+                                val updated = document.addTrack(type)
+                                onDocumentChange(updated)
+                                selectedTrackId = updated.tracks.last().id
+                                selectedClipId = null
+                            },
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
+                        ) { Text("+ ${type.name.lowercase().replaceFirstChar { it.uppercase() }}", fontSize = 10.sp) }
+                    }
+                }
+                if (selectedTrack?.type in setOf(TimelineTrackType.VIDEO, TimelineTrackType.AUDIO) && selectedClip != null) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAF7))) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text("Clip audio mixer", fontWeight = FontWeight.SemiBold, color = Green)
+                            Text("Volume · ${(selectedClip.volume * 100).toInt()}%", color = Grey, fontSize = 11.sp)
+                            Slider(
+                                value = selectedClip.volume.coerceIn(0f, 1f),
+                                onValueChange = { volume -> updateSelectedClip { it.copy(volume = volume.coerceIn(0f, 1f)) } },
+                                valueRange = 0f..1f
+                            )
+                            FilterChip(
+                                selected = selectedClip.muted,
+                                onClick = { updateSelectedClip { it.copy(muted = !it.muted) } },
+                                label = { Text(if (selectedClip.muted) "Clip muted" else "Mute clip") },
+                                leadingIcon = { Icon(if (selectedClip.muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, null) }
+                            )
+                            Text("These settings are applied to the final timeline export.", color = Grey, fontSize = 10.sp)
+                        }
+                    }
+                }
+                if (selectedClip != null && selectedTrack?.locked == false) {
+                    var keyframeProperty by remember(selectedClip.id) { mutableStateOf(KeyframeProperty.POSITION_X) }
+                    var keyframeEasing by remember(selectedClip.id) { mutableStateOf(KeyframeEasing.LINEAR) }
+                    var keyframeTimeMs by remember(selectedClip.id) { mutableLongStateOf(0L) }
+                    var keyframeValue by remember(selectedClip.id) { mutableFloatStateOf(0f) }
+                    var propertyMenu by remember { mutableStateOf(false) }
+                    var easingMenu by remember { mutableStateOf(false) }
+                    val propertyOptions = KeyframeProperty.values()
+                    val matchingKeyframes = selectedClip.keyframes.filter { it.property == keyframeProperty }.sortedBy { it.timeMs }
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAF7))) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Keyframe editor", fontWeight = FontWeight.SemiBold, color = Green)
+                                Text("${selectedClip.keyframes.size} diamonds", color = Grey, fontSize = 10.sp)
+                            }
+                            Box {
+                                OutlinedButton(onClick = { propertyMenu = true }) {
+                                    Text(keyframeProperty.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() })
+                                    Icon(Icons.Default.ArrowDropDown, null)
+                                }
+                                DropdownMenu(expanded = propertyMenu, onDismissRequest = { propertyMenu = false }) {
+                                    propertyOptions.forEach { property ->
+                                        DropdownMenuItem(
+                                            text = { Text(property.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }) },
+                                            onClick = {
+                                                keyframeProperty = property
+                                                val existing = selectedClip.keyframes.firstOrNull { it.property == property }
+                                                if (existing != null) {
+                                                    keyframeTimeMs = existing.timeMs
+                                                    keyframeValue = existing.value
+                                                    keyframeEasing = existing.easing
+                                                } else {
+                                                    keyframeTimeMs = 0L
+                                                    keyframeValue = defaultKeyframeValue(property)
+                                                    keyframeEasing = KeyframeEasing.LINEAR
+                                                }
+                                                propertyMenu = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            Text("Keyframe time · ${(keyframeTimeMs / 1000f)}s", color = Grey, fontSize = 11.sp)
+                            Slider(
+                                value = keyframeTimeMs.toFloat().coerceIn(0f, selectedClip.durationMs.toFloat().coerceAtLeast(1f)),
+                                onValueChange = { keyframeTimeMs = it.toLong() },
+                                valueRange = 0f..selectedClip.durationMs.toFloat().coerceAtLeast(1f)
+                            )
+                            val keyframeRange = keyframeValueRange(keyframeProperty)
+                            Text(
+                                "Value · ${"%.3f".format(keyframeValue)}  (${keyframeRange.start} to ${keyframeRange.endInclusive})",
+                                color = Grey,
+                                fontSize = 11.sp
+                            )
+                            Slider(
+                                value = keyframeValue.coerceIn(keyframeRange.start, keyframeRange.endInclusive),
+                                onValueChange = { keyframeValue = it },
+                                valueRange = keyframeRange
+                            )
+                            Box {
+                                OutlinedButton(onClick = { easingMenu = true }) {
+                                    Text("Easing · ${keyframeEasing.name.replace('_', ' ').lowercase()}")
+                                    Icon(Icons.Default.ArrowDropDown, null)
+                                }
+                                DropdownMenu(expanded = easingMenu, onDismissRequest = { easingMenu = false }) {
+                                    KeyframeEasing.values().forEach { easing ->
+                                        DropdownMenuItem(
+                                            text = { Text(easing.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }) },
+                                            onClick = { keyframeEasing = easing; easingMenu = false }
+                                        )
+                                    }
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    onClick = {
+                                        onDocumentChange(document.setKeyframe(
+                                            selectedTrack.id, selectedClip.id,
+                                            AnimationKeyframe(keyframeProperty, keyframeTimeMs, keyframeValue, keyframeEasing)
+                                        ))
+                                    }
+                                ) { Icon(Icons.Default.Add, null); Text("Add / update") }
+                                OutlinedButton(
+                                    enabled = selectedClip.keyframes.any { it.property == keyframeProperty && it.timeMs == keyframeTimeMs },
+                                    onClick = {
+                                        onDocumentChange(document.removeKeyframe(selectedTrack.id, selectedClip.id, keyframeProperty, keyframeTimeMs))
+                                    }
+                                ) { Icon(Icons.Default.DeleteOutline, null); Text("Delete") }
+                            }
+                            if (matchingKeyframes.isNotEmpty()) {
+                                Text("Diamonds · tap to select a keyframe", color = Grey, fontSize = 10.sp)
+                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    matchingKeyframes.forEach { marker ->
+                                        FilterChip(
+                                            selected = marker.timeMs == keyframeTimeMs,
+                                            onClick = {
+                                                keyframeTimeMs = marker.timeMs
+                                                keyframeValue = marker.value
+                                                keyframeEasing = marker.easing
+                                            },
+                                            label = { Text("◆ ${marker.timeMs / 1000f}s", fontSize = 10.sp) }
+                                        )
+                                    }
+                                }
+                            }
+                            Text("Transform keyframes animate the selected video in preview and timeline export.", color = Grey, fontSize = 10.sp)
+                        }
+                    }
+                }
+                if (selectedTrack?.type == TimelineTrackType.TEXT && selectedClip != null) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAF7))) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Text & subtitle editor", fontWeight = FontWeight.SemiBold, color = Green)
+                            OutlinedTextField(
+                                value = selectedClip.label,
+                                onValueChange = { value -> updateSelectedTextClip { it.copy(label = value.take(240)) } },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Text content") },
+                                minLines = 1,
+                                maxLines = 3
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("TITLE", "SUBTITLE").forEach { role ->
+                                    FilterChip(
+                                        selected = selectedClip.textRole == role,
+                                        onClick = {
+                                            updateSelectedTextClip {
+                                                it.copy(
+                                                    textRole = role,
+                                                    textSizeScale = if (role == "SUBTITLE") 0.042f else 0.06f,
+                                                    textPosition = if (role == "SUBTITLE") "BOTTOM" else it.textPosition
+                                                )
+                                            }
+                                        },
+                                        label = { Text(if (role == "TITLE") "Title" else "Subtitle") }
+                                    )
+                                }
+                                FilterChip(
+                                    selected = selectedClip.textBold,
+                                    onClick = { updateSelectedTextClip { it.copy(textBold = !it.textBold) } },
+                                    label = { Text("Bold") }
+                                )
+                            }
+                            Text("Font size · " + (selectedClip.textSizeScale * 100).toInt() + "% of frame", color = Grey, fontSize = 11.sp)
+                            Slider(
+                                value = selectedClip.textSizeScale,
+                                onValueChange = { size -> updateSelectedTextClip { it.copy(textSizeScale = size) } },
+                                valueRange = 0.025f..0.12f
+                            )
+                            Text("Text color", color = Grey, fontSize = 11.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(
+                                    "White" to 0xFFFFFFFF.toInt(),
+                                    "Yellow" to 0xFFFFD54F.toInt(),
+                                    "Black" to 0xFF171717.toInt()
+                                ).forEach { (name, colorValue) ->
+                                    FilterChip(
+                                        selected = selectedClip.textColor == colorValue,
+                                        onClick = { updateSelectedTextClip { it.copy(textColor = colorValue) } },
+                                        label = { Text(name) }
+                                    )
+                                }
+                            }
+                            Text("Position", color = Grey, fontSize = 11.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("TOP" to "Top", "CENTER" to "Center", "BOTTOM" to "Bottom").forEach { (value, label) ->
+                                    FilterChip(
+                                        selected = selectedClip.textPosition == value,
+                                        onClick = { updateSelectedTextClip { it.copy(textPosition = value) } },
+                                        label = { Text(label) }
+                                    )
+                                }
+                            }
+                            FilterChip(
+                                selected = selectedClip.textBackgroundColor != 0,
+                                onClick = {
+                                    updateSelectedTextClip {
+                                        it.copy(textBackgroundColor = if (it.textBackgroundColor == 0) 0x99000000.toInt() else 0)
+                                    }
+                                },
+                                label = { Text("Background") }
+                            )
+                            Text(
+                                "Timing: " + (selectedClip.startMs / 1000f) + "s – " + (selectedClip.endMs / 1000f) + "s. Drag or trim this clip on the Text track.",
+                                color = Grey,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+                document.tracks.forEach { track ->
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = { selectedTrackId = track.id; selectedClipId = null },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                            ) {
+                                Text(track.name + if (track.locked) " · Locked" else "", color = if (selectedTrackId == track.id) Green else Ink, fontSize = 12.sp)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Text("${track.clips.size} clips", color = Grey, fontSize = 10.sp)
+                            if (track.type != TimelineTrackType.TEXT) {
+                                IconButton(
+                                    onClick = {
+                                        onDocumentChange(document.copy(tracks = document.tracks.map {
+                                            if (it.id == track.id) it.copy(muted = !it.muted) else it
+                                        }))
+                                    },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        if (track.muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                        if (track.muted) "Unmute track" else "Mute track",
+                                        tint = if (track.muted) Green else Grey,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            IconButton(onClick = {
+                                onDocumentChange(document.copy(tracks = document.tracks.map {
+                                    if (it.id == track.id) it.copy(locked = !it.locked) else it
+                                }))
+                            }, modifier = Modifier.size(30.dp)) {
+                                Icon(if (track.locked) Icons.Default.Lock else Icons.Default.LockOpen, "Toggle track lock", tint = Grey, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        if (track.clips.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().height(34.dp).background(Color(0xFFF3F4F1), RoundedCornerShape(7.dp)).padding(8.dp)) {
+                                Text("Empty track", color = Grey, fontSize = 10.sp)
+                            }
+                        } else {
+                            val timelineWidth = (document.durationMs / 1000f * pixelsPerSecond + 48f).coerceAtLeast(320f)
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                            ) {
+                                Box(
+                                    Modifier
+                                        .width(timelineWidth.dp)
+                                        .height(58.dp)
+                                        .background(Color(0xFFF7F8F6), RoundedCornerShape(7.dp))
+                                ) {
+                                    track.clips.forEach { clip ->
+                                        val isSelected = selectedClipId == clip.id && selectedTrackId == track.id
+                                        val clipWidth = (clip.durationMs / 1000f * pixelsPerSecond).coerceAtLeast(48f)
+                                        Surface(
+                                            onClick = { selectedTrackId = track.id; selectedClipId = clip.id },
+                                            modifier = Modifier
+                                                .offset(x = (clip.startMs / 1000f * pixelsPerSecond).dp, y = 3.dp)
+                                                .width(clipWidth.dp)
+                                                .height(52.dp)
+                                                .then(
+                                                    if (track.locked) Modifier else Modifier.pointerInput(clip.id, track.id, pixelsPerSecond) {
+                                                        var totalDragPx = 0f
+                                                        detectDragGestures(
+                                                            onDragStart = { totalDragPx = 0f },
+                                                            onDragCancel = { totalDragPx = 0f },
+                                                            onDragEnd = { totalDragPx = 0f }
+                                                        ) { change, dragAmount ->
+                                                            change.consume()
+                                                            totalDragPx += dragAmount.x
+                                                            val deltaMs = (totalDragPx / density / pixelsPerSecond * 1000f).toLong()
+                                                            selectedTrackId = track.id
+                                                            selectedClipId = clip.id
+                                                            onDocumentChange(document.moveClipMagnetic(track.id, clip.id, clip.startMs + deltaMs, 150L))
+                                                        }
+                                                    }
+                                                ),
+                                            shape = RoundedCornerShape(7.dp),
+                                            color = if (isSelected) SoftGreen else Color(0xFFF0F1EF),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Green else Edge)
+                                        ) {
+                                            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                                                Box(
+                                                    Modifier
+                                                        .width(12.dp)
+                                                        .fillMaxHeight()
+                                                        .background(if (isSelected) Green.copy(alpha = 0.22f) else Color(0xFFE1E5E0))
+                                                        .then(if (track.locked) Modifier else Modifier.pointerInput(clip.id, pixelsPerSecond) {
+                                                            var totalDragPx = 0f
+                                                            detectDragGestures(onDragStart = { totalDragPx = 0f }) { change, dragAmount ->
+                                                                change.consume()
+                                                                totalDragPx += dragAmount.x
+                                                                val deltaMs = (totalDragPx / density / pixelsPerSecond * 1000f).toLong()
+                                                                selectedTrackId = track.id
+                                                                selectedClipId = clip.id
+                                                                onDocumentChange(document.trimClipStart(track.id, clip.id, clip.startMs + deltaMs))
+                                                            }
+                                                        })
+                                                )
+                                                Column(Modifier.weight(1f).padding(horizontal = 5.dp)) {
+                                                    Text(clip.label, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                                    Text("${clip.startMs / 1000f}s · ${clip.durationMs / 1000f}s", color = Grey, fontSize = 9.sp)
+                                                }
+                                                Box(
+                                                    Modifier
+                                                        .width(12.dp)
+                                                        .fillMaxHeight()
+                                                        .background(if (isSelected) Green.copy(alpha = 0.22f) else Color(0xFFE1E5E0))
+                                                        .then(if (track.locked) Modifier else Modifier.pointerInput(clip.id, pixelsPerSecond) {
+                                                            var totalDragPx = 0f
+                                                            detectDragGestures(onDragStart = { totalDragPx = 0f }) { change, dragAmount ->
+                                                                change.consume()
+                                                                totalDragPx += dragAmount.x
+                                                                val deltaMs = (totalDragPx / density / pixelsPerSecond * 1000f).toLong()
+                                                                selectedTrackId = track.id
+                                                                selectedClipId = clip.id
+                                                                onDocumentChange(document.trimClipEnd(track.id, clip.id, clip.endMs + deltaMs))
+                                                            }
+                                                        })
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        enabled = selectedTrack != null && !selectedTrack.locked,
+                        onClick = {
+                            val track = selectedTrack ?: return@OutlinedButton
+                            val asset = when (track.type) {
+                                TimelineTrackType.AUDIO -> audioAsset
+                                TimelineTrackType.VIDEO -> videoAsset
+                                TimelineTrackType.TEXT -> null
+                            }
+                            if (track.type == TimelineTrackType.TEXT || asset != null) {
+                                val clip = TimelineClip(
+                                    assetUri = asset?.uri?.toString() ?: "text://title",
+                                    label = if (track.type == TimelineTrackType.TEXT) "New title" else asset?.name ?: "Clip",
+                                    startMs = document.durationMs,
+                                    durationMs = 5_000L,
+                                    textRole = "TITLE"
+                                )
+                                val updated = document.addClip(track.id, clip)
+                                onDocumentChange(updated)
+                                selectedClipId = clip.id
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
+                    ) { Text("+ Add clip", fontSize = 10.sp) }
+                    if (selectedTrack?.type == TimelineTrackType.TEXT) {
+                        OutlinedButton(
+                            enabled = !selectedTrack.locked,
+                            onClick = {
+                                val track = selectedTrack
+                                if (track != null) {
+                                    val clip = TimelineClip(
+                                        assetUri = "text://subtitle",
+                                        label = "New subtitle",
+                                        startMs = document.durationMs,
+                                        durationMs = 3_000L,
+                                        textRole = "SUBTITLE",
+                                        textSizeScale = 0.042f,
+                                        textPosition = "BOTTOM"
+                                    )
+                                    onDocumentChange(document.addClip(track.id, clip))
+                                    selectedClipId = clip.id
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
+                        ) { Text("+ Subtitle", fontSize = 10.sp) }
+                        OutlinedButton(
+                            enabled = !selectedTrack.locked,
+                            onClick = { subtitlePicker.launch(arrayOf("*/*")) },
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
+                        ) { Text("Import SRT", fontSize = 10.sp) }
+                    }
+                    OutlinedButton(
+                        enabled = selectedClip != null && selectedTrack?.locked == false,
+                        onClick = {
+                            val clip = selectedClip ?: return@OutlinedButton
+                            val track = selectedTrack ?: return@OutlinedButton
+                            onDocumentChange(document.splitClip(track.id, clip.id, clip.startMs + clip.durationMs / 2))
+                        },
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
+                    ) { Text("Split", fontSize = 10.sp) }
+                    OutlinedButton(
+                        enabled = selectedClip != null && selectedTrack?.locked == false,
+                        onClick = {
+                            val clip = selectedClip ?: return@OutlinedButton
+                            val track = selectedTrack ?: return@OutlinedButton
+                            onDocumentChange(document.moveClipMagnetic(track.id, clip.id, clip.startMs + 500L, 300L))
+                        },
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp)
+                    ) { Text("Magnetic move", fontSize = 10.sp) }
+                    IconButton(
+                        enabled = selectedClip != null && selectedTrack?.locked == false,
+                        onClick = {
+                            val clip = selectedClip ?: return@IconButton
+                            val track = selectedTrack ?: return@IconButton
+                            onDocumentChange(document.rippleRemoveClip(track.id, clip.id))
+                            selectedClipId = null
+                        }
+                    ) { Icon(Icons.Default.DeleteOutline, "Ripple delete clip", tint = Grey) }
+                }
+                if (subtitleImportMessage.isNotBlank()) {
+                    Text(subtitleImportMessage, color = Green, fontSize = 10.sp)
+                }
+                Text("Drag klip untuk alih posisi. Tarik pemegang kiri/kanan untuk trim. Zoom mengubah skala masa.", color = Grey, fontSize = 10.sp)
             }
         }
     }
@@ -674,35 +1174,6 @@ private fun DevicesScreen(modifier: Modifier) {
                 Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Hub, null, tint = Green); Spacer(Modifier.width(8.dp)); Text("Local Render Farm", fontWeight = FontWeight.SemiBold) }
                 Text("Worker discovery, pairing, job scheduling and chunk rendering are a separate local-network module.", color = Grey, fontSize = 12.sp)
                 Text("Designed for local operation without paid cloud.", color = Green, fontSize = 12.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThreeDPage(modifier: Modifier) {
-    var shape by remember { mutableStateOf("Cube") }
-    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("3D workspace", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-        Text("A simple space for modelling and scene setup.", color = Grey, fontSize = 12.sp)
-        Card(Modifier.fillMaxWidth().height(220.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.ViewInAr, null, tint = Color(0xFFDCE5DD), modifier = Modifier.size(44.dp))
-                    Text(shape + " workspace", color = Paper)
-                    Text("3D viewport module", color = Color(0xFFBEC7BF), fontSize = 11.sp)
-                }
-            }
-        }
-        Text("Add primitive", fontWeight = FontWeight.SemiBold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Cube","Sphere","Cylinder").forEach { value -> OutlinedButton(onClick = { shape = value }) { Text(value) } }
-        }
-        Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
-            Column(Modifier.padding(14.dp)) {
-                Text("Scene tools", fontWeight = FontWeight.SemiBold)
-                Text("Move · Rotate · Scale · Camera · Material", color = Grey, fontSize = 12.sp)
-                Text("The real-time viewport and mesh export engine are later modules.", color = Grey, fontSize = 11.sp)
             }
         }
     }

@@ -14,10 +14,18 @@ import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
-fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, videoEffects: List<Effect> = emptyList(), volume: Float = 1f) {
+fun MediaPreviewPlayer(
+    uri: Uri,
+    speed: Float,
+    modifier: Modifier = Modifier,
+    videoEffects: List<Effect> = emptyList(),
+    volume: Float = 1f,
+    animationClip: TimelineClip? = null
+) {
     val context = LocalContext.current
     val player = remember { ExoPlayer.Builder(context).build().apply { setVideoEffects(videoEffects) } }
 
@@ -25,9 +33,18 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, vi
         onDispose { player.release() }
     }
 
-    LaunchedEffect(uri) {
+    LaunchedEffect(uri, animationClip?.id, animationClip?.sourceInMs, animationClip?.durationMs) {
         player.stop()
-        player.setMediaItem(MediaItem.fromUri(uri))
+        val builder = MediaItem.Builder().setUri(uri)
+        if (animationClip != null) {
+            builder.setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(animationClip.sourceInMs)
+                    .setEndPositionMs(animationClip.sourceInMs + animationClip.durationMs)
+                    .build()
+            )
+        }
+        player.setMediaItem(builder.build())
         player.prepare()
     }
 
@@ -35,8 +52,16 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, vi
         player.setPlaybackSpeed(speed.coerceIn(0.25f, 3f))
     }
 
-    LaunchedEffect(volume) {
-        player.volume = volume.coerceIn(0f, 1f)
+    LaunchedEffect(volume, animationClip, speed) {
+        while (true) {
+            val animatedVolume = animationClip?.valueAt(
+                KeyframeProperty.VOLUME,
+                (player.currentPosition * speed.coerceIn(0.25f, 3f)).toLong(),
+                1f
+            ) ?: 1f
+            player.volume = (volume * animatedVolume.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+            delay(if (player.isPlaying) 33L else 120L)
+        }
     }
 
     LaunchedEffect(videoEffects) {

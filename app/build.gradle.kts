@@ -39,6 +39,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("junit:junit:4.13.2")
+    // Android's org.json stubs throw "Method ... not mocked" in local JVM tests.
+    // Use the compatible JSON implementation on the unit-test classpath.
+    testImplementation("org.json:json:20240303")
 
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
