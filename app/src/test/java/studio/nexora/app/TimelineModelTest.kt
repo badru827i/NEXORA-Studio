@@ -50,6 +50,32 @@ class TimelineModelTest {
     }
 
     @Test
+    fun animationKeyframesRoundTripAndClampToClipDuration() {
+        val clip = TimelineClip(
+            id = "animated", assetUri = "content://video/1", label = "Shot",
+            startMs = 0L, durationMs = 5_000L,
+            keyframes = listOf(
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 0L, 0.1f),
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 2_500L, 0.8f, KeyframeEasing.EASE_IN_OUT),
+                AnimationKeyframe(KeyframeProperty.ROTATION, 5_000L, 90f, KeyframeEasing.EASE_OUT),
+                AnimationKeyframe(KeyframeProperty.EXPOSURE, 8_000L, 0.5f, KeyframeEasing.HOLD),
+                AnimationKeyframe(KeyframeProperty.HUE_BLUE, 1_200L, -20f)
+            )
+        )
+        val document = TimelineDocument(
+            listOf(TimelineTrack(id = "video", name = "Video 1", type = TimelineTrackType.VIDEO, clips = listOf(clip)))
+        )
+        val restored = TimelineDocument.fromJson(document.toJson()).tracks.single().clips.single()
+
+        assertEquals(4, restored.keyframes.size)
+        assertEquals(0L, restored.keyframes.first { it.property == KeyframeProperty.POSITION_X }.timeMs)
+        assertEquals(2_500L, restored.keyframes.first { it.property == KeyframeProperty.POSITION_X && it.value > 0.5f }.timeMs)
+        assertEquals(KeyframeEasing.EASE_IN_OUT, restored.keyframes.first { it.property == KeyframeProperty.POSITION_X && it.value > 0.5f }.easing)
+        assertEquals(5_000L, restored.keyframes.first { it.property == KeyframeProperty.ROTATION }.timeMs)
+        assertEquals(-20f, restored.keyframes.first { it.property == KeyframeProperty.HUE_BLUE }.value, 0.0001f)
+    }
+
+    @Test
     fun textOverlayStyleAndSubtitleRoleRoundTripThroughJson() {
         val title = TimelineClip(
             id = "title", assetUri = "text://title", label = "Hello NEXORA",
