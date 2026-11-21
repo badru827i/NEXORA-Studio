@@ -76,6 +76,24 @@ class TimelineModelTest {
     }
 
     @Test
+    fun keyframeEditingReplacesSameTimeMovesAndRemovesSafely() {
+        val clip = TimelineClip(id = "clip", assetUri = "video", label = "Shot", startMs = 0L, durationMs = 4_000L)
+        val document = TimelineDocument(listOf(
+            TimelineTrack(id = "video", name = "Video 1", type = TimelineTrackType.VIDEO, clips = listOf(clip))
+        ))
+        val added = document.setKeyframe("video", "clip", AnimationKeyframe(KeyframeProperty.OPACITY, 1_000L, 0.5f))
+        val replaced = added.setKeyframe("video", "clip", AnimationKeyframe(KeyframeProperty.OPACITY, 1_000L, 0.8f, KeyframeEasing.EASE_OUT))
+        val moved = replaced.setKeyframe("video", "clip", AnimationKeyframe(KeyframeProperty.OPACITY, 9_000L, 0.9f))
+        val keyframes = moved.tracks.single().clips.single().keyframes
+        assertEquals(2, keyframes.size)
+        assertEquals(4_000L, keyframes.last().timeMs)
+        assertEquals(0.8f, keyframes.first().value, 0.0001f)
+        assertEquals(KeyframeEasing.EASE_OUT, keyframes.first().easing)
+        val removed = moved.removeKeyframe("video", "clip", KeyframeProperty.OPACITY, 1_000L)
+        assertEquals(1, removed.tracks.single().clips.single().keyframes.size)
+    }
+
+    @Test
     fun textOverlayStyleAndSubtitleRoleRoundTripThroughJson() {
         val title = TimelineClip(
             id = "title", assetUri = "text://title", label = "Hello NEXORA",
