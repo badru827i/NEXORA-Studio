@@ -646,10 +646,15 @@ private fun TimelineEditorPanel(
                                             text = { Text(property.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }) },
                                             onClick = {
                                                 keyframeProperty = property
-                                                matchingKeyframes.firstOrNull()?.let {
-                                                    keyframeTimeMs = it.timeMs
-                                                    keyframeValue = it.value
-                                                    keyframeEasing = it.easing
+                                                val existing = selectedClip.keyframes.firstOrNull { it.property == property }
+                                                if (existing != null) {
+                                                    keyframeTimeMs = existing.timeMs
+                                                    keyframeValue = existing.value
+                                                    keyframeEasing = existing.easing
+                                                } else {
+                                                    keyframeTimeMs = 0L
+                                                    keyframeValue = defaultKeyframeValue(property)
+                                                    keyframeEasing = KeyframeEasing.LINEAR
                                                 }
                                                 propertyMenu = false
                                             }
@@ -663,8 +668,17 @@ private fun TimelineEditorPanel(
                                 onValueChange = { keyframeTimeMs = it.toLong() },
                                 valueRange = 0f..selectedClip.durationMs.toFloat().coerceAtLeast(1f)
                             )
-                            Text("Value · ${"%.3f".format(keyframeValue)}", color = Grey, fontSize = 11.sp)
-                            Slider(value = keyframeValue.coerceIn(-100f, 100f), onValueChange = { keyframeValue = it }, valueRange = -100f..100f)
+                            val keyframeRange = keyframeValueRange(keyframeProperty)
+                            Text(
+                                "Value · ${"%.3f".format(keyframeValue)}  (${keyframeRange.start} to ${keyframeRange.endInclusive})",
+                                color = Grey,
+                                fontSize = 11.sp
+                            )
+                            Slider(
+                                value = keyframeValue.coerceIn(keyframeRange.start, keyframeRange.endInclusive),
+                                onValueChange = { keyframeValue = it },
+                                valueRange = keyframeRange
+                            )
                             Box {
                                 OutlinedButton(onClick = { easingMenu = true }) {
                                     Text("Easing · ${keyframeEasing.name.replace('_', ' ').lowercase()}")
