@@ -20,6 +20,7 @@ import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
+import androidx.media3.effect.HslAdjustment
 import java.io.File
 import java.io.FileInputStream
 
@@ -40,6 +41,10 @@ class MediaExportManager(private val context: Context) {
         cropZoom: Float,
         rotationDegrees: Int,
         outputPreset: String,
+        hue: Float,
+        saturation: Float,
+        lightness: Float,
+        speedCurve: List<Float>,
         callback: Callback
     ) {
         Thread {
@@ -75,16 +80,22 @@ class MediaExportManager(private val context: Context) {
                         )
                         .build()
 
-                    val speedProvider = object : SpeedProvider {
-                        override fun getSpeed(presentationTimeUs: Long): Float =
-                            playbackSpeed.coerceIn(0.25f, 3f)
-
-                        override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
+                    val effectiveCurve = if (speedCurve.all { kotlin.math.abs(it - 1f) < 0.001f } && playbackSpeed != 1f) {
+                        List(4) { playbackSpeed.coerceIn(0.25f, 3f) }
+                    } else {
+                        speedCurve.map { if (it.isFinite()) it.coerceIn(0.25f, 3f) else 1f }
                     }
+                    val speedProvider = CurveSpeedProvider((endMs - startMs) * 1_000L, effectiveCurve)
+                    val videoEffects = buildVideoEffects(cropZoom, rotationDegrees, outputPreset, inputShortSide) +
+                        HslAdjustment.Builder()
+                            .adjustHue(hue.coerceIn(-180f, 180f))
+                            .adjustSaturation(saturation.coerceIn(-100f, 100f))
+                            .adjustLightness(lightness.coerceIn(-100f, 100f))
+                            .build()
 
                     val editedItem = EditedMediaItem.Builder(clippedMedia)
                         .setSpeed(speedProvider)
-                        .setEffects(Effects(emptyList(), buildVideoEffects(cropZoom, rotationDegrees, outputPreset, inputShortSide)))
+                        .setEffects(Effects(emptyList(), videoEffects))
                         .setFrameRate(30)
                         .build()
 
@@ -171,5 +182,34 @@ class MediaExportManager(private val context: Context) {
             resolver.delete(destination, null, null)
             throw error
         }
+    }
+}
+
+
+/**
+ * Media3 SpeedProvider holds each speed until its next change. Sample the editable graph at
+ * quarter-second intervals to approximate a smooth ramp while keeping the provider deterministic.
+ */
+private class CurveSpeedProvider(
+    private val durationUs: Long,
+    private val controlPoints: List<Float>
+) : SpeedProvider {
+    private val points = controlPoints.takeIf { it.size >= 2 } ?: listOf(1f, 1f)
+    private val stepUs = 250_000L
+
+    override fun getSpeed(timeUs: Long): Float {
+        val progress = (timeUs.coerceAtLeast(0L).toDouble() / durationUs.coerceAtLeast(1L))
+            .coerceIn(0.0, 1.0)
+        val position = progress * (points.size - 1)
+        val index = position.toInt().coerceIn(0, points.lastIndex - 1)
+        val fraction = (position - index).toFloat().coerceIn(0f, 1f)
+        val start = points[index].coerceIn(0.25f, 3f)
+        val end = points[index + 1].coerceIn(0.25f, 3f)
+        return (start + (end - start) * fraction).coerceIn(0.25f, 3f)
+    }
+
+    override fun getNextSpeedChangeTimeUs(timeUs: Long): Long {
+        val next = (timeUs.coerceAtLeast(0L) / stepUs + 1L) * stepUs
+        return if (next < durationUs) next else C.TIME_UNSET
     }
 }
