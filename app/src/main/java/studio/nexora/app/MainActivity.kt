@@ -12,6 +12,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,7 +27,11 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.media3.effect.HslAdjustment
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -52,7 +58,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 private data class Asset(val uri: Uri, val name: String)
-private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices"), ThreeD("3D") }
+private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -73,6 +79,14 @@ private fun NexoraApp() {
     var cropZoom by remember { mutableFloatStateOf(1f) }
     var rotationDegrees by remember { mutableIntStateOf(0) }
     var outputPreset by remember { mutableStateOf("Original") }
+    var hue by remember { mutableFloatStateOf(0f) }
+    var saturation by remember { mutableFloatStateOf(0f) }
+    var lightness by remember { mutableFloatStateOf(0f) }
+    var blendMode by remember { mutableStateOf("Normal") }
+    var blendOpacity by remember { mutableFloatStateOf(1f) }
+    var speedCurve by remember { mutableStateOf(listOf(1f, 1f, 1f, 1f)) }
+    var blendCurve by remember { mutableStateOf(listOf(1f, 1f, 1f, 1f)) }
+    var keyframeInterpolation by remember { mutableStateOf("Ease In-Out") }
     var exportDialog by remember { mutableStateOf(false) }
     var exportRunning by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf("Choose a video and start export.") }
@@ -111,7 +125,6 @@ private fun NexoraApp() {
                             Screen.Media -> Icons.Default.Image
                             Screen.Projects -> Icons.Default.Folder
                             Screen.Devices -> Icons.Default.Devices
-                            Screen.ThreeD -> Icons.Default.ViewInAr
                         }
                         NavigationBarItem(selected = screen == item, onClick = { screen = item }, icon = { Icon(icon, item.label) }, label = { Text(item.label, fontSize = 10.sp) })
                     }
@@ -124,7 +137,13 @@ private fun NexoraApp() {
                     trimIn, { trimIn = safeTrimStart(it, trimOut) }, trimOut, { trimOut = safeTrimEnd(it, trimIn) },
                     splitCount, { splitCount++ }, { picker.launch(arrayOf("video/*", "image/*", "audio/*")) },
                     cropZoom, { cropZoom = safeCropZoom(it) }, rotationDegrees, { rotationDegrees = safeRotationDegrees(it) },
-                    outputPreset, { outputPreset = safeOutputPreset(it) }
+                    outputPreset, { outputPreset = safeOutputPreset(it) },
+                    hue, { hue = it.coerceIn(-180f, 180f) }, saturation, { saturation = it.coerceIn(-100f, 100f) },
+                    lightness, { lightness = it.coerceIn(-100f, 100f) }, blendMode, { blendMode = safeBlendMode(it) },
+                    blendOpacity, { blendOpacity = it.coerceIn(0f, 1f) },
+                    speedCurve, { speedCurve = safeCurve(it, 0.25f, 3f) },
+                    blendCurve, { blendCurve = safeCurve(it, 0f, 1f) },
+                    keyframeInterpolation, { keyframeInterpolation = safeInterpolation(it) }
                 )
                 Screen.Media -> MediaScreen(Modifier.padding(padding), assets) { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
                 Screen.Projects -> ProjectsScreen(
@@ -134,6 +153,11 @@ private fun NexoraApp() {
                             put("tool", tool); put("speed", speed.toDouble())
                             put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble()); put("splitCount", splitCount)
                             put("cropZoom", cropZoom.toDouble()); put("rotationDegrees", rotationDegrees); put("outputPreset", outputPreset)
+                            put("hue", hue.toDouble()); put("saturation", saturation.toDouble()); put("lightness", lightness.toDouble())
+                            put("blendMode", blendMode); put("blendOpacity", blendOpacity.toDouble())
+                            put("speedCurve", org.json.JSONArray().apply { speedCurve.forEach { put(it.toDouble()) } })
+                            put("blendCurve", org.json.JSONArray().apply { blendCurve.forEach { put(it.toDouble()) } })
+                            put("keyframeInterpolation", keyframeInterpolation)
                             put("assets", org.json.JSONArray().apply {
                                 assets.forEach { asset ->
                                     put(org.json.JSONObject().put("uri", asset.uri.toString()).put("name", asset.name))
@@ -162,6 +186,14 @@ private fun NexoraApp() {
                             cropZoom = safeCropZoom(doc.optDouble("cropZoom", 1.0).toFloat())
                             rotationDegrees = safeRotationDegrees(doc.optInt("rotationDegrees", 0))
                             outputPreset = safeOutputPreset(doc.optString("outputPreset", "Original"))
+                            hue = doc.optDouble("hue", 0.0).toFloat().coerceIn(-180f, 180f)
+                            saturation = doc.optDouble("saturation", 0.0).toFloat().coerceIn(-100f, 100f)
+                            lightness = doc.optDouble("lightness", 0.0).toFloat().coerceIn(-100f, 100f)
+                            blendMode = safeBlendMode(doc.optString("blendMode", "Normal"))
+                            blendOpacity = doc.optDouble("blendOpacity", 1.0).toFloat().coerceIn(0f, 1f)
+                            speedCurve = readCurve(doc.optJSONArray("speedCurve"), 1f, 0.25f, 3f)
+                            blendCurve = readCurve(doc.optJSONArray("blendCurve"), 1f, 0f, 1f)
+                            keyframeInterpolation = safeInterpolation(doc.optString("keyframeInterpolation", "Ease In-Out"))
                         }
                         screen = Screen.Editor
                     },
@@ -173,11 +205,12 @@ private fun NexoraApp() {
                     onNew = {
                         activeProjectId = null
                         project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
-                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"; screen = Screen.Editor
+                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"; hue = 0f; saturation = 0f; lightness = 0f
+                        blendMode = "Normal"; blendOpacity = 1f; speedCurve = listOf(1f, 1f, 1f, 1f)
+                        blendCurve = listOf(1f, 1f, 1f, 1f); keyframeInterpolation = "Ease In-Out"; screen = Screen.Editor
                     }
                 )
                 Screen.Devices -> DevicesScreen(Modifier.padding(padding))
-                Screen.ThreeD -> ThreeDPage(Modifier.padding(padding))
             }
         }
     }
@@ -198,7 +231,7 @@ private fun NexoraApp() {
                     if (selected != null) {
                         exportRunning = true
                         exportMessage = "Preparing video..."
-                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, object : MediaExportManager.Callback {
+                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, hue, saturation, lightness, speedCurve, object : MediaExportManager.Callback {
                             override fun onComplete(outputFile: java.io.File, publicUri: Uri?) {
                                 exportRunning = false
                                 exportMessage = if (publicUri != null) {
@@ -235,11 +268,18 @@ private fun EditorScreen(
     speed: Float, changeSpeed: (Float) -> Unit, trimIn: Float, changeIn: (Float) -> Unit,
     trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit,
     cropZoom: Float, changeCropZoom: (Float) -> Unit, rotationDegrees: Int, changeRotationDegrees: (Int) -> Unit,
-    outputPreset: String, changeOutputPreset: (String) -> Unit
+    outputPreset: String, changeOutputPreset: (String) -> Unit,
+    hue: Float, changeHue: (Float) -> Unit, saturation: Float, changeSaturation: (Float) -> Unit,
+    lightness: Float, changeLightness: (Float) -> Unit, blendMode: String, changeBlendMode: (String) -> Unit,
+    blendOpacity: Float, changeBlendOpacity: (Float) -> Unit,
+    speedCurve: List<Float>, changeSpeedCurve: (List<Float>) -> Unit,
+    blendCurve: List<Float>, changeBlendCurve: (List<Float>) -> Unit,
+    keyframeInterpolation: String, changeKeyframeInterpolation: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset) {
-        buildVideoEffects(cropZoom, rotationDegrees, outputPreset)
+    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset, hue, saturation, lightness) {
+        buildVideoEffects(cropZoom, rotationDegrees, outputPreset) + HslAdjustment.Builder()
+            .adjustHue(hue).adjustSaturation(saturation).adjustLightness(lightness).build()
     }
     var audioVolume by remember { mutableFloatStateOf(1f) }
     var trackingMode by remember { mutableStateOf("Object") }
@@ -352,10 +392,11 @@ private fun EditorScreen(
                 "Trim" to Icons.Default.ContentCut, "Split" to Icons.AutoMirrored.Filled.CallSplit,
                 "Crop" to Icons.Default.Crop, "Rotate" to Icons.Default.RotateRight, "Resize" to Icons.Default.AspectRatio, "Speed" to Icons.Default.Speed,
                 "Audio" to Icons.Default.GraphicEq, "Text" to Icons.Default.TextFields,
-                "Subtitles" to Icons.Default.Subtitles, "Adjust" to Icons.Default.Tune,
+                "Subtitles" to Icons.Default.Subtitles, "Color" to Icons.Default.Tune,
+                "Blend" to Icons.Default.Layers, "Keyframes" to Icons.Default.Timeline,
                 "Tracking" to Icons.Default.GpsFixed
             )
-            LazyVerticalGrid(GridCells.Fixed(4), Modifier.fillMaxWidth().height(220.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), userScrollEnabled = false) {
+            LazyVerticalGrid(GridCells.Fixed(4), Modifier.fillMaxWidth().height(300.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), userScrollEnabled = false) {
                 items(tools.size) { i -> ToolTile(tools[i].first, tools[i].second, tools[i].first == tool) { selectTool(tools[i].first) } }
             }
         }
@@ -394,8 +435,46 @@ private fun EditorScreen(
                             Text("Resolution is applied during export. Smaller output can reduce file size.", color = Grey, fontSize = 11.sp)
                         }
                         "Speed" -> {
-                            Text(String.format("%.2f", speed) + "×", color = Green, fontWeight = FontWeight.Bold)
-                            Slider(speed, changeSpeed, valueRange = 0.25f..3f)
+                            Text("Speed ramp · ${String.format("%.2f", speed)}× base", color = Green, fontWeight = FontWeight.Bold)
+                            Slider(speed, { value -> changeSpeed(value); changeSpeedCurve(List(4) { value }) }, valueRange = 0.25f..3f)
+                            Text("Drag the two inner points to shape the slow-motion ramp.", color = Grey, fontSize = 11.sp)
+                            CurveEditor("Speed curve", speedCurve, 0.25f..3f, "0.25×", "3.0×", changeSpeedCurve)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("Slow" to 0.5f, "Normal" to 1f, "Fast" to 2f).forEach { (label, value) ->
+                                    OutlinedButton(onClick = { changeSpeed(value); changeSpeedCurve(List(4) { value }) }) { Text(label) }
+                                }
+                            }
+                        }
+                        "Color" -> {
+                            Text("HSL color grading", color = Green, fontWeight = FontWeight.SemiBold)
+                            Text("Hue · ${hue.toInt()}°", color = Grey, fontSize = 12.sp)
+                            Slider(hue, { changeHue(it.coerceIn(-180f, 180f)) }, valueRange = -180f..180f)
+                            Text("Saturation · ${saturation.toInt()}", color = Grey, fontSize = 12.sp)
+                            Slider(saturation, { changeSaturation(it.coerceIn(-100f, 100f)) }, valueRange = -100f..100f)
+                            Text("Lightness · ${lightness.toInt()}", color = Grey, fontSize = 12.sp)
+                            Slider(lightness, { changeLightness(it.coerceIn(-100f, 100f)) }, valueRange = -100f..100f)
+                            TextButton(onClick = { changeHue(0f); changeSaturation(0f); changeLightness(0f) }) { Text("Reset HSL") }
+                            Text("HSL is applied to the preview and video export.", color = Grey, fontSize = 11.sp)
+                        }
+                        "Blend" -> {
+                            Text("Blend mode", color = Green, fontWeight = FontWeight.SemiBold)
+                            val blendModes = listOf("Normal", "Multiply", "Screen", "Overlay", "Soft Light")
+                            blendModes.chunked(3).forEach { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    row.forEach { mode -> FilterChip(selected = blendMode == mode, onClick = { changeBlendMode(mode) }, label = { Text(mode, fontSize = 11.sp) }) }
+                                }
+                            }
+                            Text("Opacity · ${(blendOpacity * 100).toInt()}%", color = Grey, fontSize = 12.sp)
+                            Slider(blendOpacity, { changeBlendOpacity(it.coerceIn(0f, 1f)) }, valueRange = 0f..1f)
+                            CurveEditor("Blend opacity graph", blendCurve, 0f..1f, "0%", "100%", changeBlendCurve)
+                            Text("Blend settings are saved with the project. True clip-to-clip compositing needs an overlay track in the next timeline milestone.", color = Grey, fontSize = 11.sp)
+                        }
+                        "Keyframes" -> {
+                            Text("Keyframe interpolation", color = Green, fontWeight = FontWeight.SemiBold)
+                            listOf("Linear", "Ease In", "Ease Out", "Ease In-Out", "Bezier").forEach { mode ->
+                                FilterChip(selected = keyframeInterpolation == mode, onClick = { changeKeyframeInterpolation(mode) }, label = { Text(mode) })
+                            }
+                            Text("The editable speed and blend graphs use draggable control points. Bezier handles and per-property keyframe tracks are a follow-on engine task.", color = Grey, fontSize = 11.sp)
                         }
                         "Split" -> {
                             Text("Place a split marker at the playhead.", color = Grey, fontSize = 12.sp)
@@ -674,35 +753,6 @@ private fun DevicesScreen(modifier: Modifier) {
                 Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Hub, null, tint = Green); Spacer(Modifier.width(8.dp)); Text("Local Render Farm", fontWeight = FontWeight.SemiBold) }
                 Text("Worker discovery, pairing, job scheduling and chunk rendering are a separate local-network module.", color = Grey, fontSize = 12.sp)
                 Text("Designed for local operation without paid cloud.", color = Green, fontSize = 12.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThreeDPage(modifier: Modifier) {
-    var shape by remember { mutableStateOf("Cube") }
-    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("3D workspace", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-        Text("A simple space for modelling and scene setup.", color = Grey, fontSize = 12.sp)
-        Card(Modifier.fillMaxWidth().height(220.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.ViewInAr, null, tint = Color(0xFFDCE5DD), modifier = Modifier.size(44.dp))
-                    Text(shape + " workspace", color = Paper)
-                    Text("3D viewport module", color = Color(0xFFBEC7BF), fontSize = 11.sp)
-                }
-            }
-        }
-        Text("Add primitive", fontWeight = FontWeight.SemiBold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Cube","Sphere","Cylinder").forEach { value -> OutlinedButton(onClick = { shape = value }) { Text(value) } }
-        }
-        Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
-            Column(Modifier.padding(14.dp)) {
-                Text("Scene tools", fontWeight = FontWeight.SemiBold)
-                Text("Move · Rotate · Scale · Camera · Material", color = Grey, fontSize = 12.sp)
-                Text("The real-time viewport and mesh export engine are later modules.", color = Grey, fontSize = 11.sp)
             }
         }
     }
