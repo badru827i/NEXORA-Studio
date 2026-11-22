@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 
 private val Bg = Color(0xFFF5F5F2)
 private val Paper = Color.White
