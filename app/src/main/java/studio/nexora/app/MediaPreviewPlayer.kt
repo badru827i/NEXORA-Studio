@@ -14,10 +14,11 @@ import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
-fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, videoEffects: List<Effect> = emptyList(), volume: Float = 1f) {
+fun MediaPreviewPlayer(uri: Uri, speed: Float, speedCurve: List<Float> = listOf(1f, 1f, 1f, 1f), modifier: Modifier = Modifier, videoEffects: List<Effect> = emptyList(), volume: Float = 1f) {
     val context = LocalContext.current
     val player = remember { ExoPlayer.Builder(context).build().apply { setVideoEffects(videoEffects) } }
 
@@ -31,8 +32,24 @@ fun MediaPreviewPlayer(uri: Uri, speed: Float, modifier: Modifier = Modifier, vi
         player.prepare()
     }
 
-    LaunchedEffect(speed) {
-        player.setPlaybackSpeed(speed.coerceIn(0.25f, 3f))
+    LaunchedEffect(speed, speedCurve) {
+        while (true) {
+            val curve = if (speedCurve.all { kotlin.math.abs(it - 1f) < 0.001f } && speed != 1f) {
+                List(4) { speed.coerceIn(0.25f, 3f) }
+            } else {
+                speedCurve.map { if (it.isFinite()) it.coerceIn(0.25f, 3f) else 1f }
+            }
+            val duration = player.duration
+            val progress = if (duration > 0L) {
+                (player.currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            } else 0f
+            val position = progress * (curve.size - 1)
+            val index = position.toInt().coerceIn(0, curve.lastIndex - 1)
+            val fraction = (position - index).coerceIn(0f, 1f)
+            val currentSpeed = curve[index] + (curve[index + 1] - curve[index]) * fraction
+            player.setPlaybackSpeed(currentSpeed.coerceIn(0.25f, 3f))
+            delay(120L)
+        }
     }
 
     LaunchedEffect(volume) {
