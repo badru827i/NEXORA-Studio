@@ -305,7 +305,7 @@ private fun EditorScreen(
             Card(Modifier.fillMaxWidth().aspectRatio(16f/9f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
                 if (previewUri != null) {
                     Box(Modifier.fillMaxSize()) {
-                        MediaPreviewPlayer(uri = previewUri, speed = speed, modifier = Modifier.fillMaxSize(), videoEffects = activeVideoEffects, volume = audioVolume)
+                        MediaPreviewPlayer(uri = previewUri, speed = speed, speedCurve = speedCurve, modifier = Modifier.fillMaxSize(), videoEffects = activeVideoEffects, volume = audioVolume)
                         if (tool == "Tracking") {
                             val regionSize = if (trackingMode == "Point") 0.10f else 0.18f
                             BoxWithConstraints(
