@@ -40,6 +40,7 @@ class MediaExportManager(private val context: Context) {
         cropZoom: Float,
         rotationDegrees: Int,
         outputPreset: String,
+        colorGrade: ColorGradeSettings = ColorGradeSettings(),
         callback: Callback
     ) {
         Thread {
@@ -84,7 +85,7 @@ class MediaExportManager(private val context: Context) {
 
                     val editedItem = EditedMediaItem.Builder(clippedMedia)
                         .setSpeed(speedProvider)
-                        .setEffects(Effects(emptyList(), buildVideoEffects(cropZoom, rotationDegrees, outputPreset, inputShortSide)))
+                        .setEffects(Effects(emptyList(), buildVideoEffects(cropZoom, rotationDegrees, outputPreset, inputShortSide, colorGrade)))
                         .setFrameRate(30)
                         .build()
 
