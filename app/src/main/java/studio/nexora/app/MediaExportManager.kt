@@ -45,6 +45,7 @@ class MediaExportManager(private val context: Context) {
         saturation: Float,
         lightness: Float,
         speedCurve: List<Float>,
+        colorGrade: ColorGradeSettings = ColorGradeSettings(),
         callback: Callback
     ) {
         Thread {
@@ -91,7 +92,7 @@ class MediaExportManager(private val context: Context) {
                             .adjustHue(hue.coerceIn(-180f, 180f))
                             .adjustSaturation(saturation.coerceIn(-100f, 100f))
                             .adjustLightness(lightness.coerceIn(-100f, 100f))
-                            .build()
+                            .build() + buildColorGradeEffects(colorGrade)
 
                     val editedItem = EditedMediaItem.Builder(clippedMedia)
                         .setSpeed(speedProvider)
