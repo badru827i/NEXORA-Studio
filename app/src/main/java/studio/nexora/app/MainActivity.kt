@@ -73,6 +73,7 @@ private fun NexoraApp() {
     var cropZoom by remember { mutableFloatStateOf(1f) }
     var rotationDegrees by remember { mutableIntStateOf(0) }
     var outputPreset by remember { mutableStateOf("Original") }
+    var colorGrade by remember { mutableStateOf(ColorGradeSettings()) }
     var exportDialog by remember { mutableStateOf(false) }
     var exportRunning by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf("Choose a video and start export.") }
@@ -124,7 +125,7 @@ private fun NexoraApp() {
                     trimIn, { trimIn = safeTrimStart(it, trimOut) }, trimOut, { trimOut = safeTrimEnd(it, trimIn) },
                     splitCount, { splitCount++ }, { picker.launch(arrayOf("video/*", "image/*", "audio/*")) },
                     cropZoom, { cropZoom = safeCropZoom(it) }, rotationDegrees, { rotationDegrees = safeRotationDegrees(it) },
-                    outputPreset, { outputPreset = safeOutputPreset(it) }
+                    outputPreset, { outputPreset = safeOutputPreset(it) }, colorGrade, { colorGrade = it.sanitized() }
                 )
                 Screen.Media -> MediaScreen(Modifier.padding(padding), assets) { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
                 Screen.Projects -> ProjectsScreen(
@@ -134,6 +135,11 @@ private fun NexoraApp() {
                             put("tool", tool); put("speed", speed.toDouble())
                             put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble()); put("splitCount", splitCount)
                             put("cropZoom", cropZoom.toDouble()); put("rotationDegrees", rotationDegrees); put("outputPreset", outputPreset)
+                            put("colorGrade", org.json.JSONObject().apply {
+                                put("brightness", colorGrade.brightness.toDouble()); put("contrast", colorGrade.contrast.toDouble())
+                                put("saturation", colorGrade.saturation.toDouble()); put("hue", colorGrade.hue.toDouble())
+                                put("temperature", colorGrade.temperature.toDouble())
+                            })
                             put("assets", org.json.JSONArray().apply {
                                 assets.forEach { asset ->
                                     put(org.json.JSONObject().put("uri", asset.uri.toString()).put("name", asset.name))
@@ -162,6 +168,14 @@ private fun NexoraApp() {
                             cropZoom = safeCropZoom(doc.optDouble("cropZoom", 1.0).toFloat())
                             rotationDegrees = safeRotationDegrees(doc.optInt("rotationDegrees", 0))
                             outputPreset = safeOutputPreset(doc.optString("outputPreset", "Original"))
+                            val grade = doc.optJSONObject("colorGrade")
+                            colorGrade = ColorGradeSettings(
+                                brightness = grade?.optDouble("brightness", 0.0)?.toFloat() ?: 0f,
+                                contrast = grade?.optDouble("contrast", 0.0)?.toFloat() ?: 0f,
+                                saturation = grade?.optDouble("saturation", 0.0)?.toFloat() ?: 0f,
+                                hue = grade?.optDouble("hue", 0.0)?.toFloat() ?: 0f,
+                                temperature = grade?.optDouble("temperature", 0.0)?.toFloat() ?: 0f
+                            ).sanitized()
                         }
                         screen = Screen.Editor
                     },
@@ -173,7 +187,7 @@ private fun NexoraApp() {
                     onNew = {
                         activeProjectId = null
                         project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
-                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"; screen = Screen.Editor
+                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"; colorGrade = ColorGradeSettings(); screen = Screen.Editor
                     }
                 )
                 Screen.Devices -> DevicesScreen(Modifier.padding(padding))
@@ -198,7 +212,7 @@ private fun NexoraApp() {
                     if (selected != null) {
                         exportRunning = true
                         exportMessage = "Preparing video..."
-                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, object : MediaExportManager.Callback {
+                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, colorGrade, object : MediaExportManager.Callback {
                             override fun onComplete(outputFile: java.io.File, publicUri: Uri?) {
                                 exportRunning = false
                                 exportMessage = if (publicUri != null) {
@@ -235,11 +249,12 @@ private fun EditorScreen(
     speed: Float, changeSpeed: (Float) -> Unit, trimIn: Float, changeIn: (Float) -> Unit,
     trimOut: Float, changeOut: (Float) -> Unit, splitCount: Int, split: () -> Unit, onImport: () -> Unit,
     cropZoom: Float, changeCropZoom: (Float) -> Unit, rotationDegrees: Int, changeRotationDegrees: (Int) -> Unit,
-    outputPreset: String, changeOutputPreset: (String) -> Unit
+    outputPreset: String, changeOutputPreset: (String) -> Unit,
+    colorGrade: ColorGradeSettings, changeColorGrade: (ColorGradeSettings) -> Unit
 ) {
     val context = LocalContext.current
-    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset) {
-        buildVideoEffects(cropZoom, rotationDegrees, outputPreset)
+    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset, colorGrade) {
+        buildVideoEffects(cropZoom, rotationDegrees, outputPreset, colorGrade = colorGrade)
     }
     var audioVolume by remember { mutableFloatStateOf(1f) }
     var trackingMode by remember { mutableStateOf("Object") }
@@ -509,6 +524,7 @@ private fun EditorScreen(
                                 fontSize = 11.sp
                             )
                         }
+                        "Adjust" -> ColorGradePanel(colorGrade, changeColorGrade)
                         else -> Text(when(tool) {
                             "Crop" -> "Crop, resize and rotation controls will be added to the transform panel."
                             "Audio" -> "Audio volume, fades and waveform controls will be added to the mixer."
