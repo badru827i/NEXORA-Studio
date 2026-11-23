@@ -247,12 +247,57 @@ data class TimelineDocument(
         if (splitAtMs <= clip.startMs || splitAtMs >= clip.endMs) return this
         val leftDuration = splitAtMs - clip.startMs
         val rightDuration = clip.durationMs - leftDuration
-        val left = clip.copy(durationMs = leftDuration)
+
+        // Keyframe times are clip-local. Keep the left half's original keyframes and
+        // rebase the right half so animation continues seamlessly from the split point.
+        val leftKeyframes = mutableListOf<AnimationKeyframe>()
+        val rightKeyframes = mutableListOf<AnimationKeyframe>()
+        clip.keyframes.groupBy { it.property }.forEach { (property, propertyFrames) ->
+            val frames = propertyFrames
+                .filter { it.value.isFinite() }
+                .sortedBy { it.timeMs }
+            if (frames.isEmpty()) return@forEach
+
+            val exact = frames.firstOrNull { it.timeMs == leftDuration }
+            val previous = frames.lastOrNull { it.timeMs < leftDuration }
+            val next = frames.firstOrNull { it.timeMs > leftDuration }
+            val splitValue = clip.valueAt(property, leftDuration, frames.first().value)
+            val splitEasing = previous?.easing ?: exact?.easing ?: next?.easing ?: KeyframeEasing.LINEAR
+
+            leftKeyframes += frames.filter { it.timeMs < leftDuration }
+            leftKeyframes += exact ?: AnimationKeyframe(
+                property = property,
+                timeMs = leftDuration,
+                value = splitValue,
+                easing = splitEasing
+            )
+
+            rightKeyframes += if (exact != null) {
+                exact.copy(timeMs = 0L)
+            } else {
+                AnimationKeyframe(
+                    property = property,
+                    timeMs = 0L,
+                    value = splitValue,
+                    easing = splitEasing
+                )
+            }
+            rightKeyframes += frames
+                .filter { it.timeMs > leftDuration }
+                .map { it.copy(timeMs = it.timeMs - leftDuration) }
+        }
+
+        val left = clip.copy(durationMs = leftDuration, keyframes = leftKeyframes.sortedWith(
+            compareBy<AnimationKeyframe> { it.property.name }.thenBy { it.timeMs }
+        ))
         val right = clip.copy(
             id = UUID.randomUUID().toString(),
             startMs = splitAtMs,
             sourceInMs = clip.sourceInMs + leftDuration,
-            durationMs = rightDuration
+            durationMs = rightDuration,
+            keyframes = rightKeyframes.sortedWith(
+                compareBy<AnimationKeyframe> { it.property.name }.thenBy { it.timeMs }
+            )
         )
         return copy(tracks = tracks.map { item ->
             if (item.id == trackId) item.copy(clips = item.clips.flatMap { current ->
