@@ -257,4 +257,46 @@ Subtitle two
         val document = TimelineDocument().addTrack(TimelineTrackType.AUDIO).addTrack(TimelineTrackType.TEXT)
         assertEquals(listOf("Video 1", "Audio 1", "Audio 2", "Text 1"), document.tracks.map { it.name })
     }
+
+    @Test
+    fun splitClipRebasesKeyframesAndPreservesAnimatedValues() {
+        val original = TimelineClip(
+            id = "animated",
+            assetUri = "content://media/animated",
+            label = "Animated shot",
+            startMs = 1_000L,
+            durationMs = 5_000L,
+            sourceInMs = 300L,
+            keyframes = listOf(
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 0L, 0.1f),
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 2_000L, 0.5f, KeyframeEasing.EASE_IN_OUT),
+                AnimationKeyframe(KeyframeProperty.POSITION_X, 5_000L, 0.9f, KeyframeEasing.EASE_OUT),
+                AnimationKeyframe(KeyframeProperty.ROTATION, 1_000L, 0f),
+                AnimationKeyframe(KeyframeProperty.ROTATION, 4_000L, 90f)
+            )
+        )
+        val document = TimelineDocument(listOf(
+            TimelineTrack(id = "video", name = "Video 1", type = TimelineTrackType.VIDEO, clips = listOf(original))
+        ))
+
+        val splitTime = 3_500L
+        val splitLocalTime = splitTime - original.startMs
+        val expectedPositionAtSplit = original.valueAt(KeyframeProperty.POSITION_X, splitLocalTime, -1f)
+        val expectedPositionAfterSplit = original.valueAt(KeyframeProperty.POSITION_X, splitLocalTime + 1_000L, -1f)
+        val result = document.splitClip("video", "animated", splitTime)
+        val clips = result.tracks.single().clips
+        val left = clips.first()
+        val right = clips.last()
+
+        assertEquals(2, clips.size)
+        assertEquals(splitLocalTime, left.durationMs)
+        assertEquals(1_500L, right.sourceInMs)
+        assertEquals(2_500L, right.durationMs)
+        assertEquals(expectedPositionAtSplit, left.valueAt(KeyframeProperty.POSITION_X, left.durationMs, -1f), 0.0001f)
+        assertEquals(expectedPositionAtSplit, right.valueAt(KeyframeProperty.POSITION_X, 0L, -1f), 0.0001f)
+        assertEquals(expectedPositionAfterSplit, right.valueAt(KeyframeProperty.POSITION_X, 1_000L, -1f), 0.0001f)
+        assertTrue(right.keyframes.any { it.property == KeyframeProperty.ROTATION && it.timeMs == 0L })
+        assertFalse(right.keyframes.any { it.property == KeyframeProperty.ROTATION && it.timeMs < 0L })
+    }
+
 }
