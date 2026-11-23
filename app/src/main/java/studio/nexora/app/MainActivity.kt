@@ -83,6 +83,7 @@ private fun NexoraApp() {
     var hue by remember { mutableFloatStateOf(0f) }
     var saturation by remember { mutableFloatStateOf(0f) }
     var lightness by remember { mutableFloatStateOf(0f) }
+    var colorGrade by remember { mutableStateOf(ColorGradeSettings()) }
     var blendMode by remember { mutableStateOf("Normal") }
     var blendOpacity by remember { mutableFloatStateOf(1f) }
     var speedCurve by remember { mutableStateOf(listOf(1f, 1f, 1f, 1f)) }
@@ -144,7 +145,7 @@ private fun NexoraApp() {
                     blendOpacity, { blendOpacity = it.coerceIn(0f, 1f) },
                     speedCurve, { speedCurve = safeCurve(it, 0.25f, 3f) },
                     blendCurve, { blendCurve = safeCurve(it, 0f, 1f) },
-                    keyframeInterpolation, { keyframeInterpolation = safeInterpolation(it) }
+                    keyframeInterpolation, { keyframeInterpolation = safeInterpolation(it) }, colorGrade, { colorGrade = it.sanitized() }
                 )
                 Screen.Media -> MediaScreen(Modifier.padding(padding), assets) { picker.launch(arrayOf("video/*", "image/*", "audio/*")) }
                 Screen.Projects -> ProjectsScreen(
@@ -155,6 +156,10 @@ private fun NexoraApp() {
                             put("trimIn", trimIn.toDouble()); put("trimOut", trimOut.toDouble()); put("splitCount", splitCount)
                             put("cropZoom", cropZoom.toDouble()); put("rotationDegrees", rotationDegrees); put("outputPreset", outputPreset)
                             put("hue", hue.toDouble()); put("saturation", saturation.toDouble()); put("lightness", lightness.toDouble())
+                            put("colorGrade", org.json.JSONObject().apply {
+                                put("brightness", colorGrade.brightness.toDouble()); put("contrast", colorGrade.contrast.toDouble())
+                                put("temperature", colorGrade.temperature.toDouble())
+                            })
                             put("blendMode", blendMode); put("blendOpacity", blendOpacity.toDouble())
                             put("speedCurve", org.json.JSONArray().apply { speedCurve.forEach { put(it.toDouble()) } })
                             put("blendCurve", org.json.JSONArray().apply { blendCurve.forEach { put(it.toDouble()) } })
@@ -190,6 +195,12 @@ private fun NexoraApp() {
                             hue = doc.optDouble("hue", 0.0).toFloat().coerceIn(-180f, 180f)
                             saturation = doc.optDouble("saturation", 0.0).toFloat().coerceIn(-100f, 100f)
                             lightness = doc.optDouble("lightness", 0.0).toFloat().coerceIn(-100f, 100f)
+                            val grade = doc.optJSONObject("colorGrade")
+                            colorGrade = ColorGradeSettings(
+                                brightness = grade?.optDouble("brightness", 0.0)?.toFloat() ?: 0f,
+                                contrast = grade?.optDouble("contrast", 0.0)?.toFloat() ?: 0f,
+                                temperature = grade?.optDouble("temperature", 0.0)?.toFloat() ?: 0f
+                            ).sanitized()
                             blendMode = safeBlendMode(doc.optString("blendMode", "Normal"))
                             blendOpacity = doc.optDouble("blendOpacity", 1.0).toFloat().coerceIn(0f, 1f)
                             speedCurve = readCurve(doc.optJSONArray("speedCurve"), 1f, 0.25f, 3f)
@@ -206,7 +217,7 @@ private fun NexoraApp() {
                     onNew = {
                         activeProjectId = null
                         project = "Untitled project"; assets.clear(); tool = "Trim"; speed = 1f
-                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"; hue = 0f; saturation = 0f; lightness = 0f
+                        trimIn = 0f; trimOut = 100f; splitCount = 0; cropZoom = 1f; rotationDegrees = 0; outputPreset = "Original"; hue = 0f; saturation = 0f; lightness = 0f; colorGrade = ColorGradeSettings()
                         blendMode = "Normal"; blendOpacity = 1f; speedCurve = listOf(1f, 1f, 1f, 1f)
                         blendCurve = listOf(1f, 1f, 1f, 1f); keyframeInterpolation = "Ease In-Out"; screen = Screen.Editor
                     }
@@ -232,7 +243,7 @@ private fun NexoraApp() {
                     if (selected != null) {
                         exportRunning = true
                         exportMessage = "Preparing video..."
-                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, hue, saturation, lightness, speedCurve, object : MediaExportManager.Callback {
+                        exporter.export(selected.uri, trimIn, trimOut, speed, cropZoom, rotationDegrees, outputPreset, hue, saturation, lightness, speedCurve, colorGrade, object : MediaExportManager.Callback {
                             override fun onComplete(outputFile: java.io.File, publicUri: Uri?) {
                                 exportRunning = false
                                 exportMessage = if (publicUri != null) {
@@ -275,12 +286,13 @@ private fun EditorScreen(
     blendOpacity: Float, changeBlendOpacity: (Float) -> Unit,
     speedCurve: List<Float>, changeSpeedCurve: (List<Float>) -> Unit,
     blendCurve: List<Float>, changeBlendCurve: (List<Float>) -> Unit,
-    keyframeInterpolation: String, changeKeyframeInterpolation: (String) -> Unit
+    keyframeInterpolation: String, changeKeyframeInterpolation: (String) -> Unit,
+    colorGrade: ColorGradeSettings, changeColorGrade: (ColorGradeSettings) -> Unit
 ) {
     val context = LocalContext.current
-    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset, hue, saturation, lightness) {
+    val activeVideoEffects = remember(cropZoom, rotationDegrees, outputPreset, hue, saturation, lightness, colorGrade) {
         buildVideoEffects(cropZoom, rotationDegrees, outputPreset) + HslAdjustment.Builder()
-            .adjustHue(hue).adjustSaturation(saturation).adjustLightness(lightness).build()
+            .adjustHue(hue).adjustSaturation(saturation).adjustLightness(lightness).build() + buildColorGradeEffects(colorGrade)
     }
     var audioVolume by remember { mutableFloatStateOf(1f) }
     var trackingMode by remember { mutableStateOf("Object") }
@@ -454,8 +466,17 @@ private fun EditorScreen(
                             Slider(saturation, { changeSaturation(it.coerceIn(-100f, 100f)) }, valueRange = -100f..100f)
                             Text("Lightness · ${lightness.toInt()}", color = Grey, fontSize = 12.sp)
                             Slider(lightness, { changeLightness(it.coerceIn(-100f, 100f)) }, valueRange = -100f..100f)
-                            TextButton(onClick = { changeHue(0f); changeSaturation(0f); changeLightness(0f) }) { Text("Reset HSL") }
-                            Text("HSL is applied to the preview and video export.", color = Grey, fontSize = 11.sp)
+                            Text("Brightness · ${String.format("%.2f", colorGrade.brightness)}", color = Grey, fontSize = 12.sp)
+                            Slider(colorGrade.brightness, { changeColorGrade(colorGrade.copy(brightness = it).sanitized()) }, valueRange = -1f..1f)
+                            Text("Contrast · ${String.format("%.2f", colorGrade.contrast)}", color = Grey, fontSize = 12.sp)
+                            Slider(colorGrade.contrast, { changeColorGrade(colorGrade.copy(contrast = it).sanitized()) }, valueRange = -1f..1f)
+                            Text("Temperature · ${String.format("%.2f", colorGrade.temperature)}", color = Grey, fontSize = 12.sp)
+                            Slider(colorGrade.temperature, { changeColorGrade(colorGrade.copy(temperature = it).sanitized()) }, valueRange = -1f..1f)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                TextButton(onClick = { changeHue(0f); changeSaturation(0f); changeLightness(0f) }) { Text("Reset HSL") }
+                                TextButton(onClick = { changeColorGrade(ColorGradeSettings()) }) { Text("Reset Grade") }
+                            }
+                            Text("HSL and color grading are applied to preview and video export.", color = Grey, fontSize = 11.sp)
                         }
                         "Blend" -> {
                             Text("Blend mode", color = Green, fontWeight = FontWeight.SemiBold)
