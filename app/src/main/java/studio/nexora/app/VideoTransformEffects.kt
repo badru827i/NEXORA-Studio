@@ -33,7 +33,8 @@ fun buildVideoEffects(
     cropZoom: Float,
     rotationDegrees: Int,
     outputPreset: String,
-    inputShortSide: Int? = null
+    inputShortSide: Int? = null,
+    colorGrade: ColorGradeSettings = ColorGradeSettings()
 ): List<Effect> {
     val effects = mutableListOf<Effect>()
     val rotation = safeRotationDegrees(rotationDegrees)
@@ -47,6 +48,8 @@ fun buildVideoEffects(
     if (cropZoom.isFinite() && cropZoom > 1.001f) {
         effects += Crop(bounds.left, bounds.right, bounds.bottom, bounds.top)
     }
+
+    effects += buildColorGradeEffects(colorGrade)
 
     val targetShortSide = outputShortSide(outputPreset)
     if (targetShortSide != null) {
