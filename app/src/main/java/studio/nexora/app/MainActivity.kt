@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 private data class Asset(val uri: Uri, val name: String)
-private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices"), ThreeD("3D") }
+private enum class Screen(val label: String) { Editor("Edit"), Media("Media"), Projects("Projects"), Devices("Devices") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -111,7 +111,6 @@ private fun NexoraApp() {
                             Screen.Media -> Icons.Default.Image
                             Screen.Projects -> Icons.Default.Folder
                             Screen.Devices -> Icons.Default.Devices
-                            Screen.ThreeD -> Icons.Default.ViewInAr
                         }
                         NavigationBarItem(selected = screen == item, onClick = { screen = item }, icon = { Icon(icon, item.label) }, label = { Text(item.label, fontSize = 10.sp) })
                     }
@@ -177,7 +176,6 @@ private fun NexoraApp() {
                     }
                 )
                 Screen.Devices -> DevicesScreen(Modifier.padding(padding))
-                Screen.ThreeD -> ThreeDPage(Modifier.padding(padding))
             }
         }
     }
@@ -679,34 +677,6 @@ private fun DevicesScreen(modifier: Modifier) {
     }
 }
 
-@Composable
-private fun ThreeDPage(modifier: Modifier) {
-    var shape by remember { mutableStateOf("Cube") }
-    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("3D workspace", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-        Text("A simple space for modelling and scene setup.", color = Grey, fontSize = 12.sp)
-        Card(Modifier.fillMaxWidth().height(220.dp), colors = CardDefaults.cardColors(containerColor = PreviewBg)) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.ViewInAr, null, tint = Color(0xFFDCE5DD), modifier = Modifier.size(44.dp))
-                    Text(shape + " workspace", color = Paper)
-                    Text("3D viewport module", color = Color(0xFFBEC7BF), fontSize = 11.sp)
-                }
-            }
-        }
-        Text("Add primitive", fontWeight = FontWeight.SemiBold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Cube","Sphere","Cylinder").forEach { value -> OutlinedButton(onClick = { shape = value }) { Text(value) } }
-        }
-        Card(colors = CardDefaults.cardColors(containerColor = Paper)) {
-            Column(Modifier.padding(14.dp)) {
-                Text("Scene tools", fontWeight = FontWeight.SemiBold)
-                Text("Move · Rotate · Scale · Camera · Material", color = Grey, fontSize = 12.sp)
-                Text("The real-time viewport and mesh export engine are later modules.", color = Grey, fontSize = 11.sp)
-            }
-        }
-    }
-}
 
 private fun safeCropZoom(value: Float): Float = if (value.isFinite()) value.coerceIn(1f, 2.5f) else 1f
 private fun safeOutputPreset(value: String): String = if (value in listOf("Original", "480p", "720p", "1080p")) value else "Original"
